@@ -128,11 +128,13 @@ pub fn bleed_edge_colour(px: &mut [u8], w: usize, h: usize) {
                         n += 1;
                     }
                 }
-                if n > 0 {
-                    px[i] = (r / n) as u8;
-                    px[i + 1] = (g / n) as u8;
-                    px[i + 2] = (b / n) as u8;
-                    // alpha stays 0: only the colour bleeds
+                // alpha stays 0: only the colour bleeds
+                if let (Some(r), Some(g), Some(b)) =
+                    (r.checked_div(n), g.checked_div(n), b.checked_div(n))
+                {
+                    px[i] = r as u8;
+                    px[i + 1] = g as u8;
+                    px[i + 2] = b as u8;
                 }
             }
         }
