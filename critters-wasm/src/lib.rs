@@ -22,6 +22,10 @@ pub fn start() {
     web_shell::start(
         "critters-canvas",
         || {
+            // The web shell applies agg-gui's 1.7× touch "UX scale" on phones
+            // for widget-based UIs. This game lays itself out in CSS pixels
+            // exactly like the original page, so keep 1:1.
+            agg_gui::ux_scale::set_ux_scale(1.0);
             let fonts = Fonts::load().expect("bundled fonts parse");
             let audio = Rc::new(audio::WebAudio::new());
             let settings = Arc::new(settings::LocalStorageSettingsStore);
