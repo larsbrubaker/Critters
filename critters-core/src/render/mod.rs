@@ -13,6 +13,7 @@
 pub mod background;
 pub mod canvas;
 pub mod critters;
+pub mod gallery;
 pub mod homes;
 pub mod hud;
 pub mod world;

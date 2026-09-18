@@ -31,6 +31,7 @@ pub struct GameWidget {
     last_paint: Option<Instant>,
     unlocked: bool,
     autoplay: bool,
+    gallery: bool,
 }
 
 impl GameWidget {
@@ -49,7 +50,14 @@ impl GameWidget {
             last_paint: None,
             unlocked: false,
             autoplay: false,
+            gallery: false,
         }
+    }
+
+    /// Show the shape gallery instead of the game (debug).
+    pub fn with_gallery(mut self) -> Self {
+        self.gallery = true;
+        self
     }
 
     /// Enable the autoplay debug driver.
@@ -158,6 +166,10 @@ impl Widget for GameWidget {
         self.flush_side_effects();
         let (w, h) = (self.bounds.width, self.bounds.height);
         let layout = self.layout;
+        if self.gallery {
+            crate::render::gallery::draw_gallery(ctx, &self.fonts, &self.game, w, h);
+            return;
+        }
         crate::render::draw(ctx, &self.fonts, &mut self.game, &layout, w, h);
     }
 

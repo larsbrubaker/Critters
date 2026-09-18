@@ -12,7 +12,7 @@ use crate::game::Game;
 use crate::piece::Piece;
 use crate::render::canvas::Cx;
 use crate::render::critters::{draw_critter, Expression};
-use crate::render::homes::draw_home;
+use crate::render::homes::{draw_home, last_home_path};
 
 pub fn draw_floor(c: &mut Cx, game: &Game) {
     // dirt, with a grass edge
@@ -264,6 +264,14 @@ pub fn draw_body(c: &mut Cx, game: &Game, b: &Piece, ghost: bool, held: bool, on
     let extents = b.local_extents();
     draw_home(c, shape.name, &extents, shape.face_size);
     c.restore();
+    // In the original, `restore()` does not restore the canvas path, so the
+    // tint fill and the two strokes below act on the last path `drawHome`
+    // built — the hollow's innermost ellipse — which gives the hole its
+    // rim. Rebuild that path in the same frame to reproduce it exactly.
+    c.save();
+    c.translate(b.x, b.y);
+    c.rotate(b.angle);
+    last_home_path(c, shape.name, shape.face_size);
     if b.stability_mult > 1.0 {
         let a = ((b.stability_mult - 1.0) * 0.03).min(0.3);
         c.fill_style(rgba(40, 25, 10, a as f32));
@@ -276,6 +284,7 @@ pub fn draw_body(c: &mut Cx, game: &Game, b: &Piece, ghost: bool, held: bool, on
     c.line_width(1.5);
     c.stroke_style(rgba(255, 255, 255, 0.25));
     c.stroke();
+    c.restore();
 
     let (dx, dy, rot, sx, sy) = critter_anim(game, b, held);
     c.translate(b.x, b.y);

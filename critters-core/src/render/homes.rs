@@ -145,6 +145,36 @@ fn hollow(c: &mut Cx, rx: f64, ry: f64, dy: f64) {
     ell(c, 0.0, dy + ry * 0.15, rx * 0.85, ry * 0.8, hex(0x22160d));
 }
 
+/// The hollow's `(rx, ry, dy)` for a shape, as multiples of the face size —
+/// the arguments each `HOMES` entry passes to `hollow`. `render/world.rs`
+/// needs them because the original's `drawBody` strokes the *last path
+/// `drawHome` built* (the hollow's innermost ellipse), not the outline.
+pub fn hollow_params(name: &str) -> Option<(f64, f64, f64)> {
+    Some(match name {
+        "log" => (0.72, 0.5, 0.0),
+        "block" => (0.62, 0.62, 0.0),
+        "plank" => (0.62, 0.72, 0.0),
+        "wedge" => (0.66, 0.5, 0.08),
+        "stump" => (0.62, 0.5, 0.12),
+        "log end" => (0.62, 0.62, 0.0),
+        "round log" => (0.6, 0.6, 0.0),
+        "great log" => (0.9, 0.72, 0.0),
+        "trunk" => (0.82, 0.74, 0.04),
+        "great stump" => (0.7, 0.58, 0.1),
+        _ => return None,
+    })
+}
+
+/// Rebuild the path left current by `draw_home`: the innermost hollow
+/// ellipse, `ell(0, dy + ry * 0.15, rx * 0.85, ry * 0.8)`.
+pub fn last_home_path(c: &mut Cx, name: &str, f: f64) {
+    c.begin_path();
+    if let Some((rx, ry, dy)) = hollow_params(name) {
+        let (rx, ry, dy) = (rx * f, ry * f, dy * f);
+        c.ellipse(0.0, dy + ry * 0.15, rx * 0.85, ry * 0.8, 0.0);
+    }
+}
+
 /// `drawHome(ctx, shapeName, L, faceSize)`.
 pub fn draw_home(c: &mut Cx, name: &str, l: &Extents, f: f64) {
     match name {

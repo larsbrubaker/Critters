@@ -11,7 +11,7 @@ mod settings;
 use std::rc::Rc;
 
 use agg_gui_shell::{NoHost, RedrawPolicy, ShellConfig, ShellError};
-use critters_core::{build_app, build_app_autoplay, Fonts};
+use critters_core::{build_app, build_app_autoplay, build_app_gallery, Fonts};
 
 fn main() -> Result<(), ShellError> {
     let fonts = Fonts::load().expect("bundled fonts parse");
@@ -20,8 +20,16 @@ fn main() -> Result<(), ShellError> {
 
     // The original's app column is 560 CSS px wide; a phone-like portrait
     // window shows it best. The game re-lays out at any size.
+    // `CRITTERS_WINDOW=WxH` overrides the initial logical window size (debug).
+    let (win_w, win_h) = std::env::var("CRITTERS_WINDOW")
+        .ok()
+        .and_then(|v| {
+            let (w, h) = v.split_once('x')?;
+            Some((w.parse().ok()?, h.parse().ok()?))
+        })
+        .unwrap_or((560.0, 900.0));
     let mut config = ShellConfig::new("Critter Stack")
-        .with_logical_size(560.0, 900.0)
+        .with_logical_size(win_w, win_h)
         .with_min_logical_size(320.0, 480.0)
         // The scene animates every frame (idle critters, camera easing).
         .with_redraw_policy(RedrawPolicy::Continuous)
@@ -38,8 +46,11 @@ fn main() -> Result<(), ShellError> {
     }
 
     let autoplay = std::env::var("CRITTERS_AUTOPLAY").is_ok();
+    let gallery = std::env::var("CRITTERS_GALLERY").is_ok();
     agg_gui_shell::run(config, move |_init| {
-        let app = if autoplay {
+        let app = if gallery {
+            build_app_gallery(fonts, audio, settings)
+        } else if autoplay {
             build_app_autoplay(fonts, audio, settings)
         } else {
             build_app(fonts, audio, settings)

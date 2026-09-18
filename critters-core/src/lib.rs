@@ -54,6 +54,17 @@ pub fn build_app(fonts: Fonts, audio: Rc<dyn AudioSink>, settings: Arc<dyn Setti
     App::new(Box::new(GameWidget::new(fonts, audio, settings)))
 }
 
+/// `build_app` showing the shape gallery (see `render/gallery.rs`).
+pub fn build_app_gallery(
+    fonts: Fonts,
+    audio: Rc<dyn AudioSink>,
+    settings: Arc<dyn SettingsStore>,
+) -> App {
+    App::new(Box::new(
+        GameWidget::new(fonts, audio, settings).with_gallery(),
+    ))
+}
+
 /// `build_app` with the autoplay debug driver enabled (see `autoplay.rs`).
 pub fn build_app_autoplay(
     fonts: Fonts,
