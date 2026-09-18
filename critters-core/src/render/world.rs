@@ -280,7 +280,8 @@ pub fn paint_body(c: &mut Cx, b: &Piece) {
     c.save();
     c.translate(b.x, b.y);
     c.rotate(b.angle);
-    paint_rim(c, b, false);
+    // the stability tint fills the hollow before the rim strokes, as in the original
+    paint_rim(c, b, true);
     c.restore();
 }
 
@@ -336,11 +337,7 @@ pub fn draw_body(
     c.translate(b.x, b.y);
     c.rotate(b.angle);
     let fonts = c.fonts;
-    sprites.body(fonts, b.spec).blit(c);
-    if b.stability_mult > 1.0 {
-        // tint the hollow, then put the rim back on top as the original does
-        paint_rim(c, b, true);
-    }
+    sprites.body(fonts, b.spec, b.stability_mult).blit(c);
     let (dx, dy, rot, sx, sy) = critter_anim(game, b, held);
     c.translate(dx, dy);
     c.rotate(rot);
@@ -357,13 +354,6 @@ pub fn draw_body_live(c: &mut Cx, game: &Game, b: &Piece, ghost: bool, held: boo
     c.save();
     apply_ghost_and_wind(c, game, b, ghost, held, on_stage);
     paint_body(c, b);
-    if b.stability_mult > 1.0 {
-        c.save();
-        c.translate(b.x, b.y);
-        c.rotate(b.angle);
-        paint_rim(c, b, true);
-        c.restore();
-    }
     let (dx, dy, rot, sx, sy) = critter_anim(game, b, held);
     c.translate(b.x, b.y);
     c.rotate(b.angle);
@@ -373,6 +363,30 @@ pub fn draw_body_live(c: &mut Cx, game: &Game, b: &Piece, ghost: bool, held: boo
     let (expr, blink) = face_state(game, b, held, on_stage);
     draw_critter(c, b.spec.critter, b.spec.face_size * 1.05, expr, blink);
     c.restore();
+}
+
+/// Ring the piece that ended the round (see `postmortem.rs`): a pulsing red
+/// circle with a white halo so it reads on wood, sky and space alike.
+pub fn draw_culprit_ring(c: &mut Cx, game: &Game) {
+    let Some((b, pm)) = game.culprit() else {
+        return;
+    };
+    let half_w = (b.bounds.max.x - b.bounds.min.x) / 2.0;
+    let half_h = (b.bounds.max.y - b.bounds.min.y) / 2.0;
+    let pulse = ((game.time - pm.at) / 220.0).sin() * 4.0;
+    let r = half_w.hypot(half_h) + 12.0 + pulse;
+    let (cx, cy) = (
+        (b.bounds.min.x + b.bounds.max.x) / 2.0,
+        (b.bounds.min.y + b.bounds.max.y) / 2.0,
+    );
+    c.begin_path();
+    c.arc(cx, cy, r, 0.0, std::f64::consts::TAU);
+    c.line_width(7.0);
+    c.stroke_style(rgba(255, 255, 255, 0.85));
+    c.stroke();
+    c.line_width(4.0);
+    c.stroke_style(hex(0xe63946));
+    c.stroke();
 }
 
 /// Whether any part of a piece can be on screen: its bounds, padded for

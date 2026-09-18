@@ -154,10 +154,25 @@ impl Game {
         }
         if y < layout.stage_h {
             if self.state == State::Over {
-                if let Some(r) = self.input.overlay_button {
-                    if r.contains(x, y) {
-                        self.input.button_armed = true;
-                    }
+                let on_button = self
+                    .input
+                    .overlay_button
+                    .map(|r| r.contains(x, y))
+                    .unwrap_or(false);
+                if on_button {
+                    self.input.button_armed = true;
+                } else if !self.overlay.peek {
+                    // a tap off the button puts the card away so the tower,
+                    // and the ringed culprit, can be looked at
+                    self.overlay.peek = true;
+                    let hint = format!("{} Drag to look around", self.overlay.reason);
+                    self.set_hint(hint.trim(), false);
+                } else {
+                    // peeking: drags scroll the view
+                    self.input.drag_start = Some((x, y));
+                    self.input.drag_last_y = y;
+                    self.input.scrolling = false;
+                    self.input.dragging = true;
                 }
                 return;
             }
@@ -419,6 +434,38 @@ mod tests {
         g.pointer_down(&l, 210.0, 410.0);
         g.pointer_up(&l, 250.0, 420.0);
         assert_eq!(g.state, State::Play);
+    }
+
+    #[test]
+    fn after_game_over_the_card_can_be_put_away_and_the_tower_scrolled() {
+        let (mut g, l) = setup();
+        g.stress_tower(30, false);
+        g.step(16.0);
+        g.end_round(2, crate::piece::FallReason::WentOverTheSide);
+        g.input.overlay_button = Some(Rect {
+            x: 200.0,
+            y: 400.0,
+            w: 120.0,
+            h: 40.0,
+        });
+        // first tap off the button dismisses the card
+        g.pointer_down(&l, 50.0, 50.0);
+        g.pointer_up(&l, 50.0, 50.0);
+        assert!(g.overlay.peek);
+        assert_eq!(g.state, State::Over);
+        assert!(g.hint.contains("went over the side"), "{}", g.hint);
+        // then a vertical drag scrolls
+        let before = g.view_offset;
+        g.pointer_down(&l, 100.0, 300.0);
+        g.pointer_move(&l, 100.0, 240.0);
+        g.pointer_up(&l, 100.0, 240.0);
+        assert!((g.view_offset - (before + 60.0 / l.scale)).abs() < 1e-9);
+        assert_eq!(g.state, State::Over);
+        // the button still restarts
+        g.pointer_down(&l, 210.0, 410.0);
+        g.pointer_up(&l, 210.0, 410.0);
+        assert_eq!(g.state, State::Play);
+        assert!(!g.overlay.peek);
     }
 
     #[test]

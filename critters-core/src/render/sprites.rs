@@ -34,6 +34,8 @@ const BODY_MARGIN: f64 = 3.0;
 /// rotated or squashed sprite is minified (bilinear ≈ box filter) rather
 /// than magnified, keeping AGG's exact-coverage edges crisp.
 const SUPERSAMPLE: f64 = 2.0;
+/// Stale chrome (old scores) is dropped once this many have accumulated.
+const MAX_CHROME_SPRITES: usize = 24;
 /// Sprites are never rasterised finer than this many pixels per unit.
 const MAX_PIXELS_PER_UNIT: f64 = 6.0;
 
@@ -98,6 +100,26 @@ impl Sprite {
     }
 }
 
+/// Number of quantised stability-tint steps above "no tint".
+///
+/// The tint only moves the already-dark hollow by a colour level or two,
+/// so a handful of steps is indistinguishable from the continuous ramp — and
+/// every extra level is another full set of body textures (20 levels ran a
+/// phone up to 200 sprites).
+pub const TINT_LEVELS: u8 = 4;
+
+/// Tint level for a stability multiplier: the tint alpha is
+/// `min(0.3, (mult - 1) * 0.03)`, so it saturates at mult = 11.
+pub fn tint_level(stability_mult: f64) -> u8 {
+    let t = ((stability_mult - 1.0) / 10.0).clamp(0.0, 1.0);
+    (t * TINT_LEVELS as f64).round() as u8
+}
+
+/// The multiplier a tint level stands for.
+pub fn tint_level_mult(level: u8) -> f64 {
+    1.0 + 10.0 * level as f64 / TINT_LEVELS as f64
+}
+
 /// Give fully transparent texels the colour of their opaque neighbours.
 ///
 /// The texture is straight (un-premultiplied) alpha and is sampled with
@@ -153,7 +175,10 @@ pub struct SpriteCache {
     screen_ppu: f64,
     ground: Option<Sprite>,
     cloud: Option<Sprite>,
-    bodies: HashMap<&'static str, Sprite>,
+    /// Device pixels per CSS pixel, for the chrome sprites.
+    css_ppu: f64,
+    chrome: HashMap<String, Sprite>,
+    bodies: HashMap<(&'static str, u8), Sprite>,
     faces: HashMap<(Critter, Expression, bool), Sprite>,
 }
 
@@ -172,11 +197,42 @@ impl SpriteCache {
         }
     }
 
+    /// Device scale for sprites drawn in CSS pixels (HUD, tray chrome).
+    pub fn set_device_scale(&mut self, scale: f64) {
+        let scale = scale.clamp(0.5, MAX_PIXELS_PER_UNIT);
+        if (scale - self.css_ppu).abs() > 1e-6 {
+            self.css_ppu = scale;
+            self.chrome.clear();
+        }
+    }
+
+    /// A piece of static chrome (HUD boxes, a tray slot's frame or badge),
+    /// `w × h` CSS pixels with its origin at the top-left, keyed by whatever
+    /// it displays. Text and rounded rects cost ~3 ms a frame on a phone when
+    /// redrawn live, and they only change when the score or a slot changes.
+    pub fn chrome(
+        &mut self,
+        fonts: &Fonts,
+        key: String,
+        w: f64,
+        h: f64,
+        draw: impl FnOnce(&mut Cx),
+    ) -> &Sprite {
+        let ppu = self.css_ppu.max(0.5);
+        if !self.chrome.contains_key(&key) && self.chrome.len() >= MAX_CHROME_SPRITES {
+            self.chrome.clear();
+        }
+        self.chrome
+            .entry(key)
+            .or_insert_with(|| Sprite::render(fonts, ppu, 0.0, 0.0, w, h, draw))
+    }
+
     pub fn len(&self) -> usize {
         self.bodies.len()
             + self.faces.len()
             + usize::from(self.ground.is_some())
             + usize::from(self.cloud.is_some())
+            + self.chrome.len()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -213,11 +269,17 @@ impl SpriteCache {
         })
     }
 
-    /// The wood body of a shape: fill, clipped interior and hollow rim.
-    pub fn body(&mut self, fonts: &Fonts, spec: ShapeDef) -> &Sprite {
+    /// The wood body of a shape: fill, clipped interior, stability tint and
+    /// hollow rim. The tint darkens continuously with depth in the original;
+    /// it is quantised to [`TINT_LEVELS`] steps (each under 1/255 of a
+    /// channel apart on the hollow) so a deep piece is still one cached quad.
+    /// Drawing it live cost 8 ms a frame on a phone with a 50-piece tower.
+    pub fn body(&mut self, fonts: &Fonts, spec: ShapeDef, stability_mult: f64) -> &Sprite {
         let ppu = self.ppu.max(0.5);
-        self.bodies.entry(spec.name).or_insert_with(|| {
-            let piece = Piece::new(spec, 0.0, 0.0, 0.0);
+        let level = tint_level(stability_mult);
+        self.bodies.entry((spec.name, level)).or_insert_with(|| {
+            let mut piece = Piece::new(spec, 0.0, 0.0, 0.0);
+            piece.stability_mult = tint_level_mult(level);
             let (hw, hh) = match spec.kind {
                 ShapeKind::Round { r } => (r, r),
                 _ => {
@@ -274,16 +336,66 @@ mod tests {
         let fonts = Fonts::load().unwrap();
         let mut cache = SpriteCache::default();
         cache.set_pixels_per_unit(2.0);
-        let log = cache.body(&fonts, SHAPES[0]); // 120 × 36
-                                                 // 120 wide + 3 margin each side, at 2 px per unit × 2 supersampling
+        let log = cache.body(&fonts, SHAPES[0], 1.0); // 120 × 36
+                                                      // 120 wide + 3 margin each side, at 2 px per unit × 2 supersampling
         assert!((504..=505).contains(&log.w), "width {}", log.w);
         assert_eq!(alpha_at(log, 0.0, 0.0), 255, "centre is opaque wood");
         assert_eq!(alpha_at(log, 50.0, 10.0), 255);
         assert_eq!(alpha_at(log, -62.5, -20.5), 0, "margin is transparent");
         // the wedge is clipped to its triangle: top corners are empty
-        let wedge = cache.body(&fonts, SHAPES[3]);
+        let wedge = cache.body(&fonts, SHAPES[3], 1.0);
         assert_eq!(alpha_at(wedge, -40.0, -35.0), 0);
         assert_eq!(alpha_at(wedge, 0.0, 10.0), 255);
+    }
+
+    #[test]
+    fn tint_is_quantised_and_baked_into_the_body() {
+        assert_eq!(tint_level(1.0), 0);
+        assert_eq!(tint_level(0.5), 0);
+        assert_eq!(tint_level(11.0), TINT_LEVELS);
+        assert_eq!(tint_level(12.0), TINT_LEVELS, "alpha saturates at 0.3");
+        assert!((tint_level_mult(tint_level(6.0)) - 6.0).abs() <= 1.25);
+        let fonts = Fonts::load().unwrap();
+        let mut cache = SpriteCache::default();
+        cache.set_pixels_per_unit(1.0);
+        // the hollow's inner ellipse sits just below the centre of a block
+        let at = |s: &Sprite| {
+            let ppu = s.w as f64 / s.lw;
+            let x = ((0.0 - s.x0) * ppu) as u32;
+            let y = ((14.0 - s.y0) * ppu) as u32;
+            let i = ((y * s.w + x) * 4) as usize;
+            (s.data[i], s.data[i + 1], s.data[i + 2])
+        };
+        let plain = at(cache.body(&fonts, SHAPES[1], 1.0));
+        let deep = at(cache.body(&fonts, SHAPES[1], 11.0));
+        // rgba(40,25,10,.3) over the #22160d hollow: a shift of a level or two
+        assert_ne!(deep, plain, "the tint is baked in");
+        assert_eq!(cache.len(), 2);
+        cache.body(&fonts, SHAPES[1], 11.2);
+        assert_eq!(cache.len(), 2, "same level reuses the sprite");
+    }
+
+    #[test]
+    fn chrome_sprites_are_keyed_and_bounded() {
+        let fonts = Fonts::load().unwrap();
+        let mut cache = SpriteCache::default();
+        cache.set_device_scale(2.0);
+        let mut draws = 0;
+        for _ in 0..3 {
+            let s = cache.chrome(&fonts, "score 10".into(), 50.0, 20.0, |c| {
+                draws += 1;
+                c.fill_style(agg_gui::color::Color::white());
+                c.fill_rect(0.0, 0.0, 50.0, 20.0);
+            });
+            assert_eq!((s.w, s.h), (100, 40));
+        }
+        assert_eq!(draws, 1, "drawn once, then reused");
+        for i in 0..MAX_CHROME_SPRITES + 5 {
+            cache.chrome(&fonts, format!("k{i}"), 4.0, 4.0, |_| {});
+        }
+        assert!(cache.len() <= MAX_CHROME_SPRITES);
+        cache.set_device_scale(3.0);
+        assert_eq!(cache.len(), 0);
     }
 
     #[test]

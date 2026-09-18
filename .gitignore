@@ -26,3 +26,4 @@ critters-wasm/pkg
 .cursor/
 
 demo_probe_*.png
+demo/stats.log

@@ -132,20 +132,25 @@ pub fn draw_far_trees(c: &mut Cx, view: &View, game: &Game) {
     if base - 300.0 > view.h {
         return; // the tallest far tree is 290: the layer has scrolled off the bottom
     }
-    // one opaque colour, so all 34 triangles go out as a single path
-    c.fill_style(hex(0x4d8f6f));
-    c.begin_path();
+    // one opaque colour: all 34 triangles as a single pre-triangulated batch
+    let mut batch = DiscBatch::new(c.ppu);
     for t in &game.scenery.far_trees {
         let tw = t.h * t.w;
-        c.move_to(t.x - tw / 2.0, base);
-        c.line_to(t.x, base - t.h);
-        c.line_to(t.x + tw / 2.0, base);
-        c.close_path();
+        batch.add_convex(
+            &[
+                (t.x - tw / 2.0, base),
+                (t.x, base - t.h),
+                (t.x + tw / 2.0, base),
+            ],
+            1.0,
+        );
     }
+    batch.flush(c, hex(0x4d8f6f));
     if base <= view.h {
-        c.rect(0.0, base, W, view.h - base);
+        c.fill_style(hex(0x4d8f6f));
+        // overlap the tree bases by a unit so the AA fringe never shows a seam
+        c.fill_rect(0.0, base - 1.0, W, view.h - base + 1.0);
     }
-    c.fill();
 }
 
 /// One leafy layer: trunks as rects, all canopies as one disc batch, then the

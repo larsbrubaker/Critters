@@ -34,13 +34,7 @@ pub struct FrameStats {
 
 impl FrameStats {
     /// Record one frame; returns a summary line every 60 frames.
-    pub fn record(
-        &mut self,
-        dt_ms: f64,
-        step_ms: f64,
-        draw_ms: f64,
-        pieces: usize,
-    ) -> Option<String> {
+    pub fn record(&mut self, dt_ms: f64, step_ms: f64, draw_ms: f64, info: &str) -> Option<String> {
         self.frames += 1;
         self.step_ms += step_ms;
         self.draw_ms += draw_ms;
@@ -51,7 +45,7 @@ impl FrameStats {
         }
         let n = self.frames as f64;
         let line = format!(
-            "critters stats: {pieces} pieces | frame {:.1} ms | step {:.2} ms | draw {:.2} ms (max {:.2}) || {}",
+            "critters stats: {info} | frame {:.1} ms | step {:.2} ms | draw {:.2} ms (max {:.2}) || {}",
             self.since / n,
             self.step_ms / n,
             self.draw_ms / n,
@@ -119,11 +113,46 @@ pub fn take_sections(frames: f64) -> String {
     })
 }
 
+thread_local! {
+    static REPORT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Web only: also POST every debug line to `/__stats` on the page's origin
+/// (`?report`), so a phone on the LAN can be profiled from the machine that
+/// serves it (`demo/debug-server.ts` appends the lines to a log).
+pub fn set_report(on: bool) {
+    REPORT.with(|c| c.set(on));
+}
+
+/// Whether the section timers are running.
+pub fn sections_on() -> bool {
+    SECTIONS_ON.with(|c| c.get())
+}
+
+/// Add time to a named section from code that is not on the main
+/// `SectionTimer` spine (e.g. work inside the per-piece loop).
+pub fn add_section(name: &'static str, ms: f64) {
+    SECTIONS.with(|s| {
+        let mut s = s.borrow_mut();
+        match s.iter_mut().find(|(n, _)| *n == name) {
+            Some(entry) => entry.1 += ms,
+            None => s.push((name, ms)),
+        }
+    });
+}
+
 /// Print a debug line: stderr natively, the console on the web.
 pub fn log(line: &str) {
     #[cfg(target_arch = "wasm32")]
     {
         web_sys::console::log_1(&line.into());
+        if REPORT.with(|c| c.get()) {
+            if let Some(window) = web_sys::window() {
+                let _ = window
+                    .navigator()
+                    .send_beacon_with_opt_str("/__stats", Some(line));
+            }
+        }
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -205,9 +234,10 @@ mod tests {
     fn stats_summarise_every_sixty_frames() {
         let mut s = FrameStats::default();
         for i in 0..59 {
-            assert!(s.record(16.0, 1.0, 2.0, i).is_none());
+            assert!(s.record(16.0, 1.0, 2.0, "").is_none());
+            let _ = i;
         }
-        let line = s.record(16.0, 1.0, 2.0, 5).unwrap();
+        let line = s.record(16.0, 1.0, 2.0, "5 pieces").unwrap();
         assert!(line.contains("5 pieces"), "{line}");
         assert!(line.contains("step 1.00 ms"), "{line}");
     }

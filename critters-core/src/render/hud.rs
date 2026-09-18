@@ -52,6 +52,9 @@ fn spaced_text(c: &mut Cx, text: &str, x: f64, baseline: f64, size: f64, color: 
     }
 }
 
+/// Height of the strip the HUD sprite covers (boxes start at y = 10).
+const HUD_SPRITE_H: f64 = 96.0;
+
 fn draw_hud(c: &mut Cx, game: &Game, layout: &Layout) {
     let stats = [
         ("SCORE", game.score.to_string()),
@@ -287,6 +290,39 @@ fn draw_overlay(c: &mut Cx, game: &mut Game, layout: &Layout) {
         game.input.overlay_button = None;
         return;
     }
+    if game.overlay.over && game.overlay.peek {
+        // card put away: just a "Play again" pill above the hint
+        let label = "Play again";
+        let lw = c.measure(label, 18.0, true);
+        let (bw, bh) = (lw + 52.0, 18.0 * 1.2 + 20.0);
+        let btn = Rect {
+            x: layout.app_w / 2.0 - bw / 2.0,
+            y: layout.stage_h - 48.0 - bh,
+            w: bw,
+            h: bh,
+        };
+        rounded_fill(
+            c,
+            Rect {
+                y: btn.y + 4.0,
+                ..btn
+            },
+            999.0,
+            hex(0x4a6f36),
+        );
+        rounded_fill(c, btn, 999.0, hex(0x6a994e));
+        let (a, d) = c.metrics(18.0, true);
+        c.fill_style(WHITE);
+        c.fill_text(
+            label,
+            btn.x + 26.0,
+            btn.y + (bh - (a + d)) / 2.0 + a,
+            18.0,
+            true,
+        );
+        game.input.overlay_button = Some(btn);
+        return;
+    }
     c.fill_style(rgba(10, 25, 15, 0.55));
     c.fill_rect(0.0, 0.0, layout.app_w, layout.stage_h);
 
@@ -305,7 +341,7 @@ fn draw_overlay(c: &mut Cx, game: &mut Game, layout: &Layout) {
     let dim_h = 13.0 * 1.4;
     let mut card_h = 22.0 + title_h + 8.0 + text_h + 8.0 + small_h;
     if game.overlay.over {
-        card_h += 8.0 + 10.0 + button_h;
+        card_h += 8.0 + 10.0 + button_h + 14.0 + dim_h;
     } else {
         card_h += 14.0 + dim_h;
     }
@@ -398,6 +434,17 @@ fn draw_overlay(c: &mut Cx, game: &mut Game, layout: &Layout) {
             true,
         );
         game.input.overlay_button = Some(Rect { y, ..btn });
+        let look = ["Tap outside to look at the tower".to_string()];
+        paragraph(
+            c,
+            &look,
+            cx,
+            y + button_h + 14.0,
+            13.0,
+            false,
+            dim_h,
+            hex(0x3b2a1e).with_alpha(0.55),
+        );
     } else {
         y += 14.0;
         let dim = ["Tap anywhere to begin".to_string()];
@@ -417,16 +464,79 @@ fn draw_overlay(c: &mut Cx, game: &mut Game, layout: &Layout) {
 
 /// HUD, toast, hint, mute button and overlay — everything inside `#stage`
 /// that is not the canvas.
-pub fn draw_stage_chrome(c: &mut Cx, game: &mut Game, layout: &Layout) {
+pub fn draw_stage_chrome(c: &mut Cx, game: &mut Game, sprites: &mut SpriteCache, layout: &Layout) {
     c.save();
     c.ctx.clip_rect(0.0, 0.0, layout.app_w, layout.stage_h);
-    draw_hud(c, game, layout);
+    // the stat boxes only change with the score, height or best
+    let key = format!(
+        "hud|{}|{:.2}|{}|{}",
+        game.score, game.tower_top, game.best_score, layout.app_w
+    );
+    let fonts = c.fonts;
+    sprites
+        .chrome(fonts, key, layout.app_w, HUD_SPRITE_H, |sc| {
+            draw_hud(sc, game, layout)
+        })
+        .blit(c);
     draw_toast(c, game, layout);
     draw_hint(c, game, layout);
     draw_mute(c, game, layout);
     draw_fullscreen(c, game, layout);
     draw_overlay(c, game, layout);
     c.restore();
+}
+
+/// `.slot` background and border, in a `w × h` box at the origin.
+fn slot_back(c: &mut Cx, w: f64, h: f64, empty: bool, big: bool, hover: bool) {
+    let r = Rect {
+        x: 0.0,
+        y: 0.0,
+        w,
+        h,
+    };
+    rounded_fill(c, r, 14.0, slot_background(big, empty));
+    let border = if empty {
+        rgba(255, 255, 255, 0.15)
+    } else if hover {
+        rgba(255, 209, 102, 0.6)
+    } else if big {
+        rgba(255, 209, 102, 0.35)
+    } else {
+        rgba(255, 255, 255, 0.08)
+    };
+    c.stroke_style(border);
+    c.line_width(3.0);
+    if empty {
+        c.set_line_dash(&[9.0, 6.0]);
+    }
+    c.begin_path();
+    c.ctx.rounded_rect(1.5, 1.5, w - 3.0, h - 3.0, 12.5);
+    c.stroke();
+    c.set_line_dash(&[]);
+}
+
+/// `.pts` badge and `.key` number of a slot, in a `w × h` box at the origin.
+fn slot_front(c: &mut Cx, w: f64, h: f64, i: usize, points: Option<u32>) {
+    if let Some(points) = points {
+        let text = format!("{} pt{}", points, if points == 1 { "" } else { "s" });
+        let tw = c.measure(&text, 12.0, true);
+        let (a, d) = c.metrics(12.0, true);
+        let bh = 2.0 + (a + d) + 2.0;
+        let bw = tw + 16.0;
+        let badge = Rect {
+            x: w - 8.0 - bw,
+            y: h - 6.0 - bh,
+            w: bw,
+            h: bh,
+        };
+        rounded_fill(c, badge, 999.0, rgba(255, 209, 102, 0.9));
+        c.fill_style(hex(0x3b2a1e));
+        c.fill_text(&text, badge.x + 8.0, badge.y + 2.0 + a, 12.0, true);
+    }
+    let key = (i + 1).to_string();
+    let (a, _) = c.metrics(11.0, true);
+    c.fill_style(rgba(255, 255, 255, 0.5));
+    c.fill_text(&key, 8.0, 5.0 + a, 11.0, true);
 }
 
 /// `#tray` with its three `.slot`s.
@@ -464,26 +574,16 @@ pub fn draw_tray(c: &mut Cx, game: &Game, sprites: &mut SpriteCache, layout: &La
         c.translate(r.x + r.w / 2.0, r.y + r.h / 2.0);
         c.scale(s, s);
         c.translate(-(r.x + r.w / 2.0), -(r.y + r.h / 2.0));
-        rounded_fill(c, r, 14.0, slot_background(big, empty));
-        let border = if empty {
-            rgba(255, 255, 255, 0.15)
-        } else if hover {
-            rgba(255, 209, 102, 0.6)
-        } else if big {
-            rgba(255, 209, 102, 0.35)
-        } else {
-            rgba(255, 255, 255, 0.08)
-        };
-        c.stroke_style(border);
-        c.line_width(3.0);
-        if empty {
-            c.set_line_dash(&[9.0, 6.0]);
-        }
-        c.begin_path();
-        c.ctx
-            .rounded_rect(r.x + 1.5, r.y + 1.5, r.w - 3.0, r.h - 3.0, 12.5);
-        c.stroke();
-        c.set_line_dash(&[]);
+        let fonts = c.fonts;
+        c.save();
+        c.translate(r.x, r.y);
+        let back_key = format!("slot-back|{}|{empty}|{big}|{hover}", r.w);
+        sprites
+            .chrome(fonts, back_key, r.w, r.h, |sc| {
+                slot_back(sc, r.w, r.h, empty, big, hover)
+            })
+            .blit(c);
+        c.restore();
 
         if let Some(piece) = &game.slot_pieces[i] {
             // .slot canvas { width: 130px; height: 96px; max-width: 100% }
@@ -504,32 +604,17 @@ pub fn draw_tray(c: &mut Cx, game: &Game, sprites: &mut SpriteCache, layout: &La
             c.restore();
         }
 
-        if let Some(spec) = spec {
-            // .pts badge
-            let text = format!(
-                "{} pt{}",
-                spec.points,
-                if spec.points == 1 { "" } else { "s" }
-            );
-            let tw = c.measure(&text, 12.0, true);
-            let (a, d) = c.metrics(12.0, true);
-            let bh = 2.0 + (a + d) + 2.0;
-            let bw = tw + 16.0;
-            let badge = Rect {
-                x: r.x + r.w - 8.0 - bw,
-                y: r.y + r.h - 6.0 - bh,
-                w: bw,
-                h: bh,
-            };
-            rounded_fill(c, badge, 999.0, rgba(255, 209, 102, 0.9));
-            c.fill_style(hex(0x3b2a1e));
-            c.fill_text(&text, badge.x + 8.0, badge.y + 2.0 + a, 12.0, true);
-        }
-        // .key
-        let key = (i + 1).to_string();
-        let (a, _) = c.metrics(11.0, true);
-        c.fill_style(rgba(255, 255, 255, 0.5));
-        c.fill_text(&key, r.x + 8.0, r.y + 5.0 + a, 11.0, true);
+        // badge and key number sit above the preview
+        c.save();
+        c.translate(r.x, r.y);
+        let points = spec.map(|s| s.points);
+        let front_key = format!("slot-front|{}|{i}|{points:?}", r.w);
+        sprites
+            .chrome(fonts, front_key, r.w, r.h, |sc| {
+                slot_front(sc, r.w, r.h, i, points)
+            })
+            .blit(c);
+        c.restore();
         c.restore();
     }
     if game.state == State::Over {

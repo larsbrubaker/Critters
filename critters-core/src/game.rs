@@ -53,6 +53,11 @@ pub struct Overlay {
     pub over: bool,
     pub title: String,
     pub text: String,
+    /// Game over only: the card has been dismissed so the tower can be
+    /// inspected (not in the original, whose card blocked the stage).
+    pub peek: bool,
+    /// Game over only: the sentence naming the critter and the rule.
+    pub reason: String,
 }
 
 pub const INTRO_TITLE: &str = "Critter Stack";
@@ -117,6 +122,8 @@ pub struct Game {
     pub sfx: Vec<Sfx>,
     /// Best score / mute changed since the last save.
     pub settings_dirty: bool,
+    /// What ended the round (see `postmortem.rs`).
+    pub postmortem: Option<crate::postmortem::Postmortem>,
     /// Transient pointer state (see `input.rs`).
     pub input: crate::input::InputState,
 }
@@ -166,10 +173,13 @@ impl Game {
                 over: false,
                 title: INTRO_TITLE.to_string(),
                 text: INTRO_TEXT.to_string(),
+                peek: false,
+                reason: String::new(),
             },
             muted,
             sfx: Vec::new(),
             settings_dirty: false,
+            postmortem: None,
             input: crate::input::InputState::default(),
         };
         game.init(false);
@@ -253,6 +263,7 @@ impl Game {
     pub fn init(&mut self, skip_intro: bool) {
         self.physics = Physics::new();
         self.placed.clear();
+        self.postmortem = None;
         self.held = None;
         self.last_dropped = None;
         self.blocks = 0;
@@ -288,6 +299,8 @@ impl Game {
             over: false,
             title: INTRO_TITLE.to_string(),
             text: INTRO_TEXT.to_string(),
+            peek: false,
+            reason: String::new(),
         };
         self.toast = None;
         self.set_hint("Pick a critter below to start", false);
@@ -367,6 +380,7 @@ impl Game {
         self.state = State::Over;
         self.held = None;
         self.sfx.push(Sfx::Over);
+        let reason_text = reason.clone().unwrap_or_default();
         let plural = if self.blocks == 1 { "" } else { "s" };
         let mut text = format!(
             "{}Score {} \u{B7} {} tall \u{B7} {} critter{}.",
@@ -384,6 +398,8 @@ impl Game {
             over: true,
             title: "Timber!".to_string(),
             text,
+            peek: false,
+            reason: reason_text,
         };
         self.set_hint("", false);
     }
@@ -492,12 +508,13 @@ impl Game {
                 }
                 i -= 1;
             }
-            let fallen = self.placed.iter().find_map(|b| {
-                b.fall_reason(self.tower_top)
-                    .map(|why| (b.spec.critter, why))
-            });
-            if let Some((critter, why)) = fallen {
-                self.game_over(Some(format!("The {} {}!", critter.name(), why.text())));
+            let fallen = self
+                .placed
+                .iter()
+                .enumerate()
+                .find_map(|(i, b)| b.fall_reason(self.tower_top).map(|why| (i, why)));
+            if let Some((piece, why)) = fallen {
+                self.end_round(piece, why);
             }
         }
 

@@ -129,6 +129,7 @@ pub fn draw(
             world::draw_body(&mut c, game, sprites, b, false, false, true);
         }
     }
+    world::draw_culprit_ring(&mut c, game);
     if let Some(held) = &game.held {
         c.save();
         c.set_line_dash(&[6.0, 8.0]);
@@ -146,7 +147,7 @@ pub fn draw(
 
     timer.mark("pieces");
     // ── chrome (CSS px) ──
-    hud::draw_stage_chrome(&mut c, game, layout);
+    hud::draw_stage_chrome(&mut c, game, sprites, layout);
     timer.mark("hud");
     hud::draw_tray(&mut c, game, sprites, layout);
     timer.mark("tray");

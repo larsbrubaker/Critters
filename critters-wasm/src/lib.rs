@@ -44,8 +44,9 @@ pub fn start() {
                 gallery: has("gallery"),
                 stress,
                 stress_physics: has("physics"),
-                stats: has("stats"),
+                stats: has("stats") || has("report"),
             };
+            critters_core::debug::set_report(has("report"));
             build_app_with(fonts, audio, settings, options)
         },
         || {},

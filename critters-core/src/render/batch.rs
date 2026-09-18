@@ -74,6 +74,66 @@ impl DiscBatch {
         }
     }
 
+    /// Add a convex polygon (any winding) with a one-pixel AA fringe: the
+    /// outline is inset and outset by half a pixel along each vertex's
+    /// averaged edge normal, the inside is fanned and the band between the
+    /// two outlines fades to zero.
+    pub fn add_convex(&mut self, pts: &[(f64, f64)], alpha: f64) {
+        let n = pts.len();
+        if n < 3 || alpha <= 0.0 {
+            return;
+        }
+        let a = alpha.min(1.0) as f32;
+        let area: f64 = (0..n)
+            .map(|i| {
+                let (x0, y0) = pts[i];
+                let (x1, y1) = pts[(i + 1) % n];
+                x0 * y1 - x1 * y0
+            })
+            .sum();
+        let sign = if area >= 0.0 { 1.0 } else { -1.0 };
+        let base = self.verts.len() as u32;
+        let half = self.fringe * 0.5;
+        for i in 0..n {
+            let (px, py) = pts[(i + n - 1) % n];
+            let (x, y) = pts[i];
+            let (nx, ny) = pts[(i + 1) % n];
+            // outward normals of the two edges meeting at this vertex
+            let unit = |dx: f64, dy: f64| {
+                let l = (dx * dx + dy * dy).sqrt().max(1e-9);
+                (sign * dy / l, -sign * dx / l)
+            };
+            let (ax, ay) = unit(x - px, y - py);
+            let (bx, by) = unit(nx - x, ny - y);
+            let (mut mx, mut my) = (ax + bx, ay + by);
+            let ml = (mx * mx + my * my).sqrt().max(1e-9);
+            // miter length so both edges move by `half`, limited at sharp tips
+            let scale = (2.0 / ml).min(4.0) / ml;
+            mx *= scale;
+            my *= scale;
+            self.verts
+                .push([(x - mx * half) as f32, (y - my * half) as f32, a]);
+            self.verts
+                .push([(x + mx * half) as f32, (y + my * half) as f32, 0.0]);
+        }
+        let n = n as u32;
+        for i in 1..n - 1 {
+            self.indices
+                .extend_from_slice(&[base, base + i * 2, base + (i + 1) * 2]);
+        }
+        for i in 0..n {
+            let j = (i + 1) % n;
+            let (in_i, out_i, in_j, out_j) = (
+                base + i * 2,
+                base + i * 2 + 1,
+                base + j * 2,
+                base + j * 2 + 1,
+            );
+            self.indices
+                .extend_from_slice(&[in_i, out_i, out_j, in_i, out_j, in_j]);
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
     }
@@ -105,6 +165,29 @@ mod tests {
         let inner_r = ((b.verts[1][0] - 10.0).powi(2) + (b.verts[1][1] - 20.0).powi(2)).sqrt();
         let outer_r = ((b.verts[2][0] - 10.0).powi(2) + (b.verts[2][1] - 20.0).powi(2)).sqrt();
         assert!((inner_r - 4.75).abs() < 1e-4 && (outer_r - 5.25).abs() < 1e-4);
+    }
+
+    #[test]
+    fn convex_polygon_gets_an_inset_core_and_a_fading_fringe() {
+        for pts in [
+            [(0.0, 0.0), (10.0, 0.0), (5.0, -20.0)],
+            [(5.0, -20.0), (10.0, 0.0), (0.0, 0.0)], // opposite winding
+        ] {
+            let mut b = DiscBatch::new(1.0);
+            b.add_convex(&pts, 1.0);
+            assert_eq!(b.verts.len(), 6);
+            assert_eq!(b.indices.len(), 3 + 18);
+            let centroid = (5.0f32, -20.0 / 3.0);
+            for i in 0..3 {
+                let (inner, outer) = (b.verts[i * 2], b.verts[i * 2 + 1]);
+                assert_eq!((inner[2], outer[2]), (1.0, 0.0));
+                let d = |v: [f32; 3]| (v[0] - centroid.0).hypot(v[1] - centroid.1);
+                assert!(
+                    d(inner) < d(outer),
+                    "core is inside the fringe for either winding"
+                );
+            }
+        }
     }
 
     #[test]

@@ -29,6 +29,7 @@ pub mod geometry;
 pub mod input;
 pub mod physics;
 pub mod piece;
+pub mod postmortem;
 pub mod render;
 pub mod rng;
 pub mod scenery;

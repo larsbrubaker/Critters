@@ -156,11 +156,11 @@ impl Widget for GameWidget {
 
     fn paint(&mut self, ctx: &mut dyn DrawCtx) {
         let now = Instant::now();
-        let dt = match self.last_paint {
+        let raw_dt = match self.last_paint {
             Some(last) => (now - last).as_secs_f64() * 1000.0,
             None => 1000.0 / 60.0,
-        }
-        .min(50.0);
+        };
+        let dt = raw_dt.min(50.0);
         self.last_paint = Some(now);
         self.game.step(dt);
         if self.debug.autoplay {
@@ -177,6 +177,7 @@ impl Widget for GameWidget {
         // sprites are rasterised at the stage's physical pixel density
         self.sprites
             .set_pixels_per_unit(layout.scale * agg_gui::device_scale());
+        self.sprites.set_device_scale(agg_gui::device_scale());
         crate::render::draw(
             ctx,
             &self.fonts,
@@ -190,8 +191,28 @@ impl Widget for GameWidget {
             let drawn = Instant::now();
             let step_ms = (stepped - now).as_secs_f64() * 1000.0;
             let draw_ms = (drawn - stepped).as_secs_f64() * 1000.0;
-            let pieces = self.game.placed.len();
-            if let Some(line) = self.stats.record(dt, step_ms, draw_ms, pieces) {
+            let g = &self.game;
+            let visible = g
+                .placed
+                .iter()
+                .filter(|b| crate::render::world::piece_visible(b, g.cam_y, g.h))
+                .count();
+            let awake = g
+                .placed
+                .iter()
+                .filter(|b| !b.is_sleeping && !b.is_static)
+                .count();
+            let tinted = g.placed.iter().filter(|b| b.stability_mult > 1.0).count();
+            let info = format!(
+                "{} pieces ({visible} visible, {awake} awake, {tinted} tinted) | {} sprites | {:.0}x{:.0} @{:.2}",
+                g.placed.len(),
+                self.sprites.len(),
+                w,
+                h,
+                agg_gui::device_scale()
+            );
+            // the unclamped interval: a 100 ms frame must show as 100 ms
+            if let Some(line) = self.stats.record(raw_dt, step_ms, draw_ms, &info) {
                 crate::debug::log(&line);
             }
         }
