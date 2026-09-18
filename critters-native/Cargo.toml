@@ -1,0 +1,24 @@
+[package]
+name = "critters-native"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Native shell (winit + wgpu) for Critter Stack."
+
+[[bin]]
+name = "critters-native"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+critters-core = { path = "../critters-core" }
+agg-gui = { workspace = true }
+# The winit event loop, wgpu surface, and input plumbing all live in
+# agg-gui-shell — this crate is only the app-specific glue plus audio and
+# settings storage.
+agg-gui-shell = { path = "../../agg-gui/agg-gui-shell" }
+cpal = "0.17"
+dirs = "7"

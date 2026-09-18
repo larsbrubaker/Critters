@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = ["critters-core", "critters-native", "critters-wasm"]
+default-members = ["critters-core", "critters-native"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.78"
+authors = ["Lars Brubaker <larsbrubaker@matterhackers.com>"]
+license = "MIT"
+repository = "https://github.com/larsbrubaker/Critters"
+
+[workspace.dependencies]
+agg-gui = "0.5"
+demo-wgpu = { path = "../agg-gui/demo-wgpu", default-features = false }
+web-time = "1"
+
+# ---------------------------------------------------------------------------
+# Local development override — see CLAUDE.md "Local development uses agg-gui
+# and box2d-rust as path deps". The rust-apps superproject lays out agg-gui
+# and box2d-rust as siblings. CI clones them the same way so these patches
+# resolve both locally and in Actions.
+# ---------------------------------------------------------------------------
+[patch.crates-io]
+agg-gui = { path = "../agg-gui/agg-gui" }
+
+# ---------------------------------------------------------------------------
+# Optimize dependencies in debug builds. The agg-rust software rasterizer is
+# expensive unoptimized — without this dev frame time drops sharply. Mirrors
+# agg-gui's own workspace profile.
+# ---------------------------------------------------------------------------
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.release.package."*"]
+opt-level = 3

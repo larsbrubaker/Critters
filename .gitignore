@@ -1,0 +1,28 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+node_modules/
+demo/dist
+demo/public/pkg
+demo/public/music
+demo/bun.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# WASM
+/pkg
+critters-wasm/pkg
+
+# Local agent state (agents/skills/launch.json ARE committed)
+.claude/settings.local.json
+.cursor/
+
+demo_probe_*.png

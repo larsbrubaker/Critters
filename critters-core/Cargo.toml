@@ -1,0 +1,18 @@
+[package]
+name = "critters-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Target-agnostic game core for Critter Stack (Rust port of the JavaScript original)."
+
+[dependencies]
+agg-gui = { workspace = true }
+agg-rust = "1.1"
+box2d-rust = { path = "../../box2d-rust" }
+web-time = { workspace = true }
+
+[lib]
+crate-type = ["rlib"]

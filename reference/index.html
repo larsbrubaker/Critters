@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Critter Stack</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <div id="stage">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <div class="stat"><span class="label">Score</span><span id="score">0</span></div>
+        <div class="stat"><span class="label">Height</span><span id="height">0.00 m</span></div>
+        <div class="stat"><span class="label">Best</span><span id="best">0</span></div>
+      </div>
+      <div id="toast" class="hidden"></div>
+      <div id="hint">Pick a critter below to start</div>
+      <button id="mute" aria-label="Mute">🔊</button>
+      <div id="overlay">
+        <div class="card">
+          <h1 id="overlay-title">Critter Stack</h1>
+          <p id="overlay-text">Stack the forest critters as high as you can without letting anyone fall off the stump.</p>
+          <p class="small">Each critter is worth points, multiplied by how high it sits. Bigger animals score more but need bigger shapes.<br>Tap a critter below, move it over the tower, then tap or release to drop.<br>Keyboard: 1 / 2 / 3 pick, &larr; &rarr; move, Space drop.</p>
+          <button id="overlay-btn" class="hidden">Play again</button>
+          <p id="overlay-dismiss" class="small dim">Tap anywhere to begin</p>
+        </div>
+      </div>
+    </div>
+    <div id="tray">
+      <div class="slot" data-slot="0"><canvas></canvas><span class="key">1</span><span class="pts"></span></div>
+      <div class="slot" data-slot="1"><canvas></canvas><span class="key">2</span><span class="pts"></span></div>
+      <div class="slot" data-slot="2"><canvas></canvas><span class="key">3</span><span class="pts"></span></div>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+  <script src="critters.js"></script>
+  <script src="homes.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>
