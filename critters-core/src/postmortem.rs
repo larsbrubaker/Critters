@@ -1,12 +1,10 @@
 //! What ended the round, kept so the player can see it. The original only
 //! put a sentence on the game-over card; on a tall tower that is not enough
-//! to tell *which* critter counted as fallen or why (a resting piece whose
-//! centre has drifted past the stump's edge loses the round without anything
-//! visibly falling). So the port records the culprit, rings it on screen,
+//! to tell *which* critter counted as fallen or where it went. So the port records the culprit, rings it on screen,
 //! points the camera at it, lets the card be dismissed to scroll the tower,
 //! and writes the full rule inputs to the debug log.
 
-use crate::config::{BELOW_TOP, EDGE_TOLERANCE, FALL_DROP, STUMP_W, W};
+use crate::config::{FLOOR_Y, W};
 use crate::game::Game;
 use crate::piece::FallReason;
 
@@ -27,18 +25,18 @@ impl Game {
             return;
         };
         let critter = b.spec.critter.name();
-        // the numbers each rule in `Piece::fall_reason` looks at
+        // the numbers `Piece::fall_reason` looks at
         crate::debug::log(&format!(
-            "critters gameover: {critter} #{piece} of {} — {} | x {:.1} (|dx| {:.1}, edge {:.1}+{EDGE_TOLERANCE}) y {:.1} bottom {:.1} (below-top limit {BELOW_TOP}) | tower_top {:.1} | highest_rest_y {:?} (drop limit {FALL_DROP}) | locked {} landed {} static {} sleeping {} speed {:.3} angle {:.3}",
+            "critters gameover: {critter} #{piece} of {} — {} | x {:.1} (dx {:.1}) y {:.1} bottom {:.1} (floor {FLOOR_Y}) hit_ground {} | tower_top {:.1} zoom {:.2} | locked {} landed {} static {} sleeping {} speed {:.3} angle {:.3}",
             self.placed.len(),
             reason.text(),
             b.x,
-            (b.x - W / 2.0).abs(),
-            STUMP_W / 2.0,
+            b.x - W / 2.0,
             b.y,
             b.bounds.max.y,
+            b.hit_ground,
             self.tower_top,
-            b.highest_rest_y,
+            self.zoom,
             b.locked,
             b.has_landed,
             b.is_static,
@@ -86,12 +84,12 @@ mod tests {
         g.stress_tower(40, false);
         g.step(16.0);
         assert_eq!(g.state, State::Play);
-        g.end_round(3, FallReason::WentOverTheSide);
+        g.end_round(3, FallReason::HitTheGround);
         assert_eq!(g.state, State::Over);
         let (b, pm) = g.culprit().expect("culprit recorded");
         assert_eq!(pm.piece, 3);
-        assert_eq!(pm.reason, FallReason::WentOverTheSide);
-        assert!(g.overlay.text.contains("went over the side"));
+        assert_eq!(pm.reason, FallReason::HitTheGround);
+        assert!(g.overlay.text.contains("hit the ground"));
         // piece 3 is near the bottom of a ~20 m tower: the view scrolled down to it
         let focus = g.tower_top - crate::config::HOVER_GAP;
         let cam = g.cam_y0.min(focus - g.h * 0.3) + g.view_offset;

@@ -10,7 +10,7 @@
 use crate::config::{
     ShapeDef, BELOW_TOP, DROP_FALLBACK, HOVER_GAP, HOVER_MARGIN, PX_PER_M, TIERS, W, WIND,
 };
-use crate::physics::{Physics, GROUND_USER_DATA};
+use crate::physics::{Physics, FLOOR_USER_DATA, GROUND_USER_DATA};
 use crate::piece::Piece;
 use crate::rng::Rng;
 use crate::scenery::Scenery;
@@ -122,6 +122,8 @@ pub struct Game {
     pub sfx: Vec<Sfx>,
     /// Best score / mute changed since the last save.
     pub settings_dirty: bool,
+    /// World-layer zoom, 1 = the original's fixed view (see `zoom.rs`).
+    pub zoom: f64,
     /// What ended the round (see `postmortem.rs`).
     pub postmortem: Option<crate::postmortem::Postmortem>,
     /// Transient pointer state (see `input.rs`).
@@ -179,6 +181,7 @@ impl Game {
             muted,
             sfx: Vec::new(),
             settings_dirty: false,
+            zoom: 1.0,
             postmortem: None,
             input: crate::input::InputState::default(),
         };
@@ -263,6 +266,7 @@ impl Game {
     pub fn init(&mut self, skip_intro: bool) {
         self.physics = Physics::new();
         self.placed.clear();
+        self.zoom = 1.0;
         self.postmortem = None;
         self.held = None;
         self.last_dropped = None;
@@ -427,12 +431,14 @@ impl Game {
             b.sync_from(&self.physics);
         }
         for (a, b) in self.physics.begin_contacts() {
+            let on_floor = a == FLOOR_USER_DATA || b == FLOOR_USER_DATA;
             for user in [a, b] {
-                if user == GROUND_USER_DATA {
+                if user == GROUND_USER_DATA || user == FLOOR_USER_DATA {
                     continue;
                 }
                 let i = user as usize;
                 if let Some(piece) = self.placed.get_mut(i) {
+                    piece.hit_ground |= on_floor;
                     if !piece.has_landed {
                         piece.has_landed = true;
                         piece.land_at = self.time;
@@ -512,7 +518,7 @@ impl Game {
                 .placed
                 .iter()
                 .enumerate()
-                .find_map(|(i, b)| b.fall_reason(self.tower_top).map(|why| (i, why)));
+                .find_map(|(i, b)| b.fall_reason().map(|why| (i, why)));
             if let Some((piece, why)) = fallen {
                 self.end_round(piece, why);
             }
@@ -551,6 +557,8 @@ impl Game {
             Some(lock) => lock,
             None => self.cam_y + (target - self.cam_y) * 0.08,
         };
+
+        self.update_zoom();
 
         for c in &mut self.scenery.clouds {
             c.x += c.v * dt / 1000.0;

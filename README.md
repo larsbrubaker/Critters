@@ -22,8 +22,11 @@ native (Windows/macOS/Linux) and in the browser via WebAssembly.
   the play area, or `↓` / `↑`.
 - Keyboard: `1` / `2` / `3` pick a slot, `←` `→` move, `Space` drop or
   restart.
-- The round ends when a piece slips below the stump top, goes over the
-  side, or a rested piece tumbles more than 1.5 m down the tower.
+- The round ends only when a piece hits the ground. Overhangs are fair game:
+  build as far sideways as you can keep balanced, and the view zooms out to
+  follow. After a game over the fallen critter is ringed; tap outside the
+  card to put it away and scroll the tower. (The original also ended the
+  round for a piece resting past the stump's edge; this port does not.)
 
 Every shape has a fixed resident critter; harder shapes carry more points,
 multiplied by how high the piece sits (100 px = 1 m). The altitude tiers,

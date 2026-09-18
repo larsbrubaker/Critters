@@ -120,8 +120,11 @@ pub fn draw_stump(c: &mut Cx) {
 }
 
 pub fn draw_ruler(c: &mut Cx, game: &Game) {
-    let top_visible = game.cam_y - 20.0;
-    let bottom_visible = game.cam_y + game.h;
+    // pinned to the stage's left edge at constant on-screen size under the zoom
+    let k = 1.0 / game.zoom;
+    let left = W / 2.0 - game.visible_half_width();
+    let (top_visible, bottom_visible) = game.visible_y_span();
+    let top_visible = top_visible - 20.0 * k;
     let mut m = 1.0;
     while m * PX_PER_M < -top_visible {
         let y = -m * PX_PER_M;
@@ -130,16 +133,32 @@ pub fn draw_ruler(c: &mut Cx, game: &Game) {
             continue;
         }
         c.stroke_style(rgba(255, 255, 255, 0.35));
-        c.line_width(1.0);
+        c.line_width(k);
         c.line_cap_butt();
         c.begin_path();
-        c.move_to(8.0, y);
-        c.line_to(38.0, y);
+        c.move_to(left + 8.0 * k, y);
+        c.line_to(left + 38.0 * k, y);
         c.stroke();
         c.fill_style(rgba(255, 255, 255, 0.7));
-        let baseline = c.middle_baseline(y, 12.0, true);
-        c.fill_text(&format!("{} m", m - 1.0), 42.0, baseline, 12.0, true);
+        let baseline = c.middle_baseline(y, 12.0 * k, true);
+        c.fill_text(
+            &format!("{} m", m - 1.0),
+            left + 42.0 * k,
+            baseline,
+            12.0 * k,
+            true,
+        );
     }
+}
+
+/// Dirt and grass beyond the ground sprite's 480 units, for when the zoom
+/// shows more of the forest floor than the original ever did.
+pub fn draw_wide_floor(c: &mut Cx, game: &Game) {
+    let half = game.visible_half_width() + 10.0;
+    c.fill_style(hex(0x5b4431));
+    c.fill_rect(W / 2.0 - half, FLOOR_Y, half * 2.0, 2000.0);
+    c.fill_style(hex(0x4f8a3f));
+    c.fill_rect(W / 2.0 - half, FLOOR_Y - 6.0, half * 2.0, 10.0);
 }
 
 /// Idle animation per critter, plus a squash when the piece lands and a lean
@@ -390,10 +409,11 @@ pub fn draw_culprit_ring(c: &mut Cx, game: &Game) {
 }
 
 /// Whether any part of a piece can be on screen: its bounds, padded for
-/// ears, antlers and the wind lean, against the visible world span.
-pub fn piece_visible(b: &Piece, cam_y: f64, stage_h: f64) -> bool {
+/// ears, antlers and the wind lean, against the visible world span
+/// (`Game::visible_y_span`).
+pub fn piece_visible(b: &Piece, view_top: f64, view_bottom: f64) -> bool {
     const PAD: f64 = 90.0;
-    b.bounds.max.y + PAD >= cam_y && b.bounds.min.y - PAD <= cam_y + stage_h
+    b.bounds.max.y + PAD >= view_top && b.bounds.min.y - PAD <= view_bottom
 }
 
 /// Tint used by the tray for the slot background — kept here so the palette
@@ -442,8 +462,7 @@ mod tests {
 
     #[test]
     fn pieces_far_below_or_above_the_view_are_culled() {
-        let cam_y = -2000.0;
-        let h = 650.0;
+        let (cam_y, h) = (-2000.0, -2000.0 + 650.0);
         let mut p = Piece::new(SHAPES[1], W / 2.0, -1700.0, 0.0);
         assert!(piece_visible(&p, cam_y, h));
         p.set_position(W / 2.0, -30.0);

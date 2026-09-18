@@ -9,26 +9,24 @@
 
 use crate::config::{
     ShapeDef, ShapeKind, BASE_DENSITY, BASE_FRICTION, BASE_FRICTION_AIR, BASE_FRICTION_STATIC,
-    BELOW_TOP, EDGE_TOLERANCE, FALL_DROP, FREEZE_INSET, PX_PER_M, SETTLE_FRAMES, STABILITY,
-    STUMP_W, UNLOCK_ANGLE, UNLOCK_DIST, W,
+    FLOOR_Y, FREEZE_INSET, PX_PER_M, SETTLE_FRAMES, STABILITY, STUMP_W, UNLOCK_ANGLE, UNLOCK_DIST,
+    W,
 };
 use crate::geometry::{local_outline, world_vertices, Bounds, P};
 use crate::physics::{BodyHandle, Physics};
 
-/// Why a piece counts as lost.
+/// Why a piece counts as lost. The original had three rules (slipped below
+/// the stump top, centre past the stump edge, tumbled 1.5 m); the port keeps
+/// only the one that is visibly a fall — see `zoom.rs`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FallReason {
-    SlippedOffTheStump,
-    WentOverTheSide,
-    TumbledDownTheTower,
+    HitTheGround,
 }
 
 impl FallReason {
     pub fn text(self) -> &'static str {
         match self {
-            FallReason::SlippedOffTheStump => "slipped off the stump",
-            FallReason::WentOverTheSide => "went over the side",
-            FallReason::TumbledDownTheTower => "tumbled down the tower",
+            FallReason::HitTheGround => "hit the ground",
         }
     }
 }
@@ -75,6 +73,8 @@ pub struct Piece {
     pub rest: Option<Rest>,
     pub highest_rest_y: Option<f64>,
     pub has_landed: bool,
+    /// Touched the forest floor (contact event from `game.rs`).
+    pub hit_ground: bool,
     pub anim_phase: f64,
     /// Time the piece landed, or -1.
     pub land_at: f64,
@@ -107,6 +107,7 @@ impl Piece {
             rest: None,
             highest_rest_y: None,
             has_landed: false,
+            hit_ground: false,
             anim_phase,
             land_at: -1.0,
             stability_mult: 1.0,
@@ -238,27 +239,13 @@ impl Piece {
         (self.x - W / 2.0).abs() <= STUMP_W / 2.0 - FREEZE_INSET
     }
 
-    /// `fallReason`: why a piece counts as lost, or None if it is still part
-    /// of the tower. A freshly dropped piece may bump things and land
-    /// anywhere within the stump's span (e.g. into a gap); the tumble rule
-    /// only applies to pieces that had actually come to rest and then fell.
-    pub fn fall_reason(&self, tower_top: f64) -> Option<FallReason> {
-        // nothing resting on the tower is ever meaningfully lower than the stump top
-        if self.bounds.max.y > BELOW_TOP {
-            return Some(FallReason::SlippedOffTheStump);
-        }
-        if self.bounds.max.y > 6.0 && !self.over_stump() {
-            return Some(FallReason::SlippedOffTheStump);
-        }
-        if (self.x - W / 2.0).abs() > STUMP_W / 2.0 + EDGE_TOLERANCE && self.y > tower_top {
-            return Some(FallReason::WentOverTheSide);
-        }
-        if let Some(h) = self.highest_rest_y {
-            if self.y > h + FALL_DROP {
-                return Some(FallReason::TumbledDownTheTower);
-            }
-        }
-        None
+    /// `fallReason`, with the port's rule: a piece is lost only when it hits
+    /// the ground. Overhangs, pieces resting past the stump's edge and pieces
+    /// that tumble but are caught by the tower are all still in play. The
+    /// floor contact event is the signal; the bounds check is a backstop for
+    /// a contact that begins and ends inside one step.
+    pub fn fall_reason(&self) -> Option<FallReason> {
+        (self.hit_ground || self.bounds.max.y >= FLOOR_Y - 1.0).then_some(FallReason::HitTheGround)
     }
 
     /// `pieceScore`: the critter's value times a height multiplier.
@@ -424,28 +411,28 @@ mod tests {
     }
 
     #[test]
-    fn fall_reasons_match_the_original_rules() {
+    fn only_the_ground_loses_the_round() {
         let mut p = block();
-        assert_eq!(p.fall_reason(0.0), None);
-        p.set_position(W / 2.0, 20.0); // bottom at 50 > BELOW_TOP
-        assert_eq!(p.fall_reason(0.0), Some(FallReason::SlippedOffTheStump));
-        let mut q = block();
-        q.set_position(W / 2.0 + STUMP_W / 2.0 + 20.0, -20.0); // bottom at 10 > 6, off the stump
-        assert_eq!(q.fall_reason(0.0), Some(FallReason::SlippedOffTheStump));
-        let mut r = block();
-        r.set_position(W / 2.0 + STUMP_W / 2.0 + 20.0, -100.0); // above the stump top but past the edge
-        assert_eq!(r.fall_reason(-300.0), Some(FallReason::WentOverTheSide));
-        assert_eq!(
-            r.fall_reason(-50.0),
-            None,
-            "above the tower top it may still be falling in"
-        );
+        assert_eq!(p.fall_reason(), None);
+        // resting far past the stump's edge, level with the tower: legal
+        p.set_position(W / 2.0 + STUMP_W / 2.0 + 200.0, -100.0);
+        assert_eq!(p.fall_reason(), None);
+        // hanging below the stump top beside the stump, not touching the floor: legal
+        p.set_position(W / 2.0 + STUMP_W / 2.0 + 40.0, 60.0);
+        assert_eq!(p.fall_reason(), None);
+        // a rested piece that slid a long way down but was caught: legal
         let mut t = block();
-        t.set_position(W / 2.0, -400.0);
+        t.set_position(W / 2.0, -900.0);
         t.is_sleeping = true;
         t.track_lock();
-        t.set_position(W / 2.0, -400.0 + FALL_DROP + 1.0);
-        assert_eq!(t.fall_reason(-400.0), Some(FallReason::TumbledDownTheTower));
+        t.set_position(W / 2.0, -300.0);
+        assert_eq!(t.fall_reason(), None);
+        // floor contact, or bounds reaching the floor, ends it
+        t.hit_ground = true;
+        assert_eq!(t.fall_reason(), Some(FallReason::HitTheGround));
+        let mut q = block();
+        q.set_position(W / 2.0 + 300.0, FLOOR_Y - 30.0);
+        assert_eq!(q.fall_reason(), Some(FallReason::HitTheGround));
     }
 
     #[test]

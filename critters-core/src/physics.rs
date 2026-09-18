@@ -52,8 +52,10 @@ pub const GRAVITY_PX_PER_S2: f32 = 1000.0;
 pub const STEP_SECONDS: f32 = 1.0 / 60.0;
 /// Sub-steps per fixed step (stands in for Matter's 10 position / 8 velocity iterations).
 pub const SUB_STEPS: i32 = 4;
-/// User data tag for the static stump and floor.
+/// User data tag for the static stump.
 pub const GROUND_USER_DATA: u64 = u64::MAX;
+/// User data tag for the forest floor: touching it ends the round.
+pub const FLOOR_USER_DATA: u64 = u64::MAX - 1;
 
 /// Matter's `frictionAir` (fraction of velocity lost per 60 Hz step) as a
 /// Box2D damping coefficient: Box2D applies `v *= 1 / (1 + d·dt)` per step.
@@ -114,20 +116,20 @@ impl Physics {
         world_set_friction_callback(&mut world, Some(min_friction));
         let mut physics = Self { world };
         // the stump
-        physics.add_static_box(W / 2.0, STUMP_H / 2.0, STUMP_W, STUMP_H);
-        // the forest floor
-        physics.add_static_box(W / 2.0, FLOOR_Y + 40.0, W * 4.0, 80.0);
+        physics.add_static_box(W / 2.0, STUMP_H / 2.0, STUMP_W, STUMP_H, GROUND_USER_DATA);
+        // the forest floor, wide enough for any tower the zoom can show
+        physics.add_static_box(W / 2.0, FLOOR_Y + 40.0, W * 40.0, 80.0, FLOOR_USER_DATA);
         physics
     }
 
-    fn add_static_box(&mut self, cx: f64, cy: f64, w: f64, h: f64) {
+    fn add_static_box(&mut self, cx: f64, cy: f64, w: f64, h: f64, user: u64) {
         let mut def = default_body_def();
         def.type_ = BodyType::Static;
         def.position = to_pos(Vec2 {
             x: cx as f32,
             y: -cy as f32,
         });
-        def.user_data = GROUND_USER_DATA;
+        def.user_data = user;
         let body = create_body(&mut self.world, &def);
         let mut shape = default_shape_def();
         shape.material.friction = 1.0;
@@ -206,7 +208,8 @@ impl Physics {
     }
 
     /// User-data pairs of the bodies that started touching during the last
-    /// step (`collisionStart`). Ground contacts report `GROUND_USER_DATA`.
+    /// step (`collisionStart`). The stump reports `GROUND_USER_DATA`, the
+    /// forest floor `FLOOR_USER_DATA`.
     pub fn begin_contacts(&self) -> Vec<(u64, u64)> {
         world_get_contact_events(&self.world)
             .begin_events

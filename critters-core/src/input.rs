@@ -133,7 +133,8 @@ pub struct InputState {
 impl Game {
     /// `toX(e)`: pointer x → clamped logical stage x.
     pub fn to_x(&self, layout: &Layout, x: f64) -> f64 {
-        Self::clamp_x(x / layout.scale)
+        // pointer → logical stage x → world x under the zoom, kept on stage
+        self.clamp_held_x(self.stage_to_world_x(x / layout.scale))
     }
 
     pub fn pointer_down(&mut self, layout: &Layout, x: f64, y: f64) {
@@ -285,8 +286,8 @@ impl Game {
         match key {
             GameKey::Digit(d) if (1..=3).contains(&d) => self.select_slot(d as usize - 1),
             GameKey::Digit(_) => {}
-            GameKey::Left => self.held_x = Self::clamp_x(self.held_x - 12.0),
-            GameKey::Right => self.held_x = Self::clamp_x(self.held_x + 12.0),
+            GameKey::Left => self.held_x = self.clamp_held_x(self.held_x - 12.0),
+            GameKey::Right => self.held_x = self.clamp_held_x(self.held_x + 12.0),
             GameKey::Down => self.view_offset += 60.0,
             GameKey::Up => self.view_offset -= 60.0,
             GameKey::Space | GameKey::Enter => match self.state {
@@ -441,7 +442,7 @@ mod tests {
         let (mut g, l) = setup();
         g.stress_tower(30, false);
         g.step(16.0);
-        g.end_round(2, crate::piece::FallReason::WentOverTheSide);
+        g.end_round(2, crate::piece::FallReason::HitTheGround);
         g.input.overlay_button = Some(Rect {
             x: 200.0,
             y: 400.0,
@@ -453,7 +454,7 @@ mod tests {
         g.pointer_up(&l, 50.0, 50.0);
         assert!(g.overlay.peek);
         assert_eq!(g.state, State::Over);
-        assert!(g.hint.contains("went over the side"), "{}", g.hint);
+        assert!(g.hint.contains("hit the ground"), "{}", g.hint);
         // then a vertical drag scrolls
         let before = g.view_offset;
         g.pointer_down(&l, 100.0, 300.0);

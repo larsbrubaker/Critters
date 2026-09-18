@@ -38,6 +38,7 @@ pub mod synth;
 pub mod tray;
 pub mod widget;
 pub mod wind;
+pub mod zoom;
 
 use std::rc::Rc;
 use std::sync::Arc;

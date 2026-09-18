@@ -63,8 +63,11 @@ impl GameWidget {
         self.debug = options;
         crate::debug::enable_sections(options.stats);
         if options.stress > 0 {
-            self.game
-                .stress_tower(options.stress, options.stress_physics);
+            self.game.stress_tower_at(
+                options.stress,
+                options.stress_physics,
+                options.stress_x as f64,
+            );
         }
         self
     }
@@ -195,7 +198,10 @@ impl Widget for GameWidget {
             let visible = g
                 .placed
                 .iter()
-                .filter(|b| crate::render::world::piece_visible(b, g.cam_y, g.h))
+                .filter(|b| {
+                    let (top, bottom) = g.visible_y_span();
+                    crate::render::world::piece_visible(b, top, bottom)
+                })
                 .count();
             let awake = g
                 .placed

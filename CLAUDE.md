@@ -37,6 +37,17 @@ knob is documented next to the constant in `physics.rs` and the observable
 gameplay rules (settle detection, lock/unlock, fall reasons, stability
 cheat) are ported verbatim on top of it.
 
+**Deliberate departures (Lars's calls — do not "fix" these back):**
+- *Only the ground loses.* The original also ended the round when a piece's
+  centre drifted 8 px past the stump edge, slipped 40 px below the stump
+  top, or tumbled 1.5 m. Here anything that can be balanced is legal, as
+  far sideways as the player dares; a piece is lost only when it touches
+  the forest floor (`Piece::fall_reason`, `zoom.rs`). The world layer zooms
+  out to keep a wide tower in view and the held piece's reach widens with it.
+- *Post-mortem.* The culprit is ringed, the camera goes to it, and the
+  game-over card can be tapped away to scroll the tower (`postmortem.rs`).
+- *Full-screen button* on touch devices.
+
 **Test-first bug fixing.** 1) Write a failing test that reproduces the bug.
 2) Fix it. 3) Confirm the test passes. Never commit a bug fix that isn't
 covered by a test.

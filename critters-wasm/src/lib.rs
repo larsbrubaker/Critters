@@ -43,6 +43,7 @@ pub fn start() {
                 autoplay: has("autoplay"),
                 gallery: has("gallery"),
                 stress,
+                stress_x: 0,
                 stress_physics: has("physics"),
                 stats: has("stats") || has("report"),
             };

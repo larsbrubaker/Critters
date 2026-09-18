@@ -59,6 +59,10 @@ fn main() -> Result<(), ShellError> {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(0),
+        stress_x: std::env::var("CRITTERS_STRESS_X")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
         stress_physics: env("CRITTERS_STRESS_PHYSICS"),
         stats: env("CRITTERS_STATS"),
     };

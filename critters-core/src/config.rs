@@ -34,14 +34,10 @@ pub const HOVER_MARGIN: f64 = 40.0;
 pub const SETTLE_FRAMES: u32 = 30;
 /// ms after a drop before dropping is allowed even if something never settles.
 pub const DROP_FALLBACK: f64 = 8000.0;
-/// px a piece's centre may hang past the stump edge before it counts as off the side.
-pub const EDGE_TOLERANCE: f64 = 8.0;
 /// px a piece's bottom may dip below the stump top (heavy towers sink a little into the stump).
 pub const BELOW_TOP: f64 = 40.0;
 /// Pieces whose centre is within this distance of the stump edge are never frozen.
 pub const FREEZE_INSET: f64 = 25.0;
-/// px a rested piece may drop below its highest resting spot before it counts as fallen.
-pub const FALL_DROP: f64 = 150.0;
 
 /// Wind gusts: only in the listed altitude tiers (by tower height). Purely
 /// visual: the tower is drawn leaning during a gust and settles back as it

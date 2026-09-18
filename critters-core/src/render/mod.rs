@@ -116,16 +116,25 @@ pub fn draw(
     background::draw_wind(&mut c, &view, game);
     timer.mark("wind");
     c.save();
-    c.translate(0.0, -game.cam_y);
+    // world layer: camera plus the sideways-building zoom (see `zoom.rs`)
+    let (zoom, pivot) = (game.zoom, game.zoom_pivot());
+    c.translate(crate::config::W / 2.0, pivot);
+    c.scale(zoom, zoom);
+    c.translate(-crate::config::W / 2.0, -pivot - game.cam_y);
+    c.ppu = layout.scale * agg_gui::device_scale() * zoom;
+    let (view_top, view_bottom) = game.visible_y_span();
     // the floor and stump scroll out of view once the camera has climbed
-    if game.cam_y + game.h > sprites::GROUND_RECT.1 {
+    if view_bottom > sprites::GROUND_RECT.1 {
+        if zoom < 1.0 {
+            world::draw_wide_floor(&mut c, game);
+        }
         sprites.ground(fonts, game).blit(&mut c);
     }
     world::draw_ruler(&mut c, game);
     timer.mark("floor+stump+ruler");
     // Tall towers: only the pieces the camera can see are drawn.
     for b in &game.placed {
-        if world::piece_visible(b, game.cam_y, game.h) {
+        if world::piece_visible(b, view_top, view_bottom) {
             world::draw_body(&mut c, game, sprites, b, false, false, true);
         }
     }

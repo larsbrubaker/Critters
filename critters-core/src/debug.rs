@@ -16,6 +16,9 @@ pub struct DebugOptions {
     pub gallery: bool,
     /// Start with a tower of this many pieces already stacked.
     pub stress: usize,
+    /// Shift the (frozen) stress tower sideways by this many units, to look
+    /// at the sideways-building zoom.
+    pub stress_x: i32,
     /// Give the stress tower live physics bodies instead of frozen ones.
     pub stress_physics: bool,
     /// Print physics/draw timings to the console once a second.
@@ -165,6 +168,11 @@ impl Game {
     /// the physics world entirely (render cost only); with `physics` they
     /// are live dynamic bodies resting on each other.
     pub fn stress_tower(&mut self, n: usize, physics: bool) {
+        self.stress_tower_at(n, physics, 0.0);
+    }
+
+    /// `stress_tower` with the column centred `dx` units off the stump centre.
+    pub fn stress_tower_at(&mut self, n: usize, physics: bool, dx: f64) {
         self.begin_play();
         let flat: Vec<_> = SHAPES
             .iter()
@@ -175,9 +183,9 @@ impl Game {
         for i in 0..n {
             let spec = flat[i % flat.len()];
             // place by the real bounds: a trapezoid's centroid is not mid-height
-            let mut piece = Piece::new(spec, W / 2.0, 0.0, self.rng.random() * 1000.0);
+            let mut piece = Piece::new(spec, W / 2.0 + dx, 0.0, self.rng.random() * 1000.0);
             let shift = top - piece.bounds.max.y;
-            piece.set_position(W / 2.0, shift);
+            piece.set_position(W / 2.0 + dx, shift);
             piece.has_landed = true;
             piece.land_at = 0.0;
             if physics {
