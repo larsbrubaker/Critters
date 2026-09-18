@@ -74,6 +74,23 @@ impl Layout {
         }
     }
 
+    /// Full-screen toggle (touch devices only): a second round button to
+    /// the left of the mute button. Not part of the original, which relied
+    /// on the browser chrome; on phones the game is far better full screen.
+    pub fn fullscreen_rect(&self) -> Rect {
+        Rect {
+            x: self.app_w - 100.0,
+            y: self.stage_h - 50.0,
+            w: 40.0,
+            h: 40.0,
+        }
+    }
+
+    /// Whether the full-screen button is shown (mobile / touch profile).
+    pub fn shows_fullscreen_button() -> bool {
+        agg_gui::input_profile::is_mobile_touch()
+    }
+
     pub fn slot_at(&self, x: f64, y: f64) -> Option<usize> {
         (0..3).find(|&i| self.slot_rect(i).contains(x, y))
     }
@@ -121,6 +138,11 @@ impl Game {
 
     pub fn pointer_down(&mut self, layout: &Layout, x: f64, y: f64) {
         self.input.pointer = Some((x, y));
+        if Layout::shows_fullscreen_button() && layout.fullscreen_rect().contains(x, y) {
+            // handled by the platform shell on the next frame, inside the gesture
+            agg_gui::fullscreen::request_toggle();
+            return;
+        }
         if layout.mute_rect().contains(x, y) {
             // muteBtn pointerdown stops propagation
             let muted = !self.muted;
@@ -357,6 +379,27 @@ mod tests {
         g.pointer_down(&l, m.x + 20.0, m.y + 20.0);
         assert!(!g.muted);
         assert_eq!(g.take_sfx(), vec![Sfx::Pick]);
+    }
+
+    #[test]
+    fn fullscreen_button_only_on_touch_profiles() {
+        let (mut g, l) = setup();
+        let r = l.fullscreen_rect();
+        assert_eq!(r.x, l.mute_rect().x - 50.0);
+        // desktop: the spot is plain stage, so the tap dismisses the intro
+        agg_gui::input_profile::set_input_profile(agg_gui::input_profile::InputProfile::Desktop);
+        g.pointer_down(&l, r.x + 20.0, r.y + 20.0);
+        assert_eq!(g.state, State::Play);
+        // mobile: the tap asks the shell for full screen and goes no further
+        let (mut m, l) = setup();
+        agg_gui::input_profile::set_input_profile(
+            agg_gui::input_profile::InputProfile::MobileAndroid,
+        );
+        let _ = agg_gui::fullscreen::take_request();
+        m.pointer_down(&l, r.x + 20.0, r.y + 20.0);
+        assert_eq!(m.state, State::Start);
+        assert!(agg_gui::fullscreen::take_request());
+        agg_gui::input_profile::set_input_profile(agg_gui::input_profile::InputProfile::Desktop);
     }
 
     #[test]

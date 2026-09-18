@@ -205,6 +205,21 @@ impl<'a> Cx<'a> {
         self.ctx.restore();
     }
 
+    /// A Font Awesome glyph centred on `(cx, cy)`.
+    pub fn icon_centered(&mut self, glyph: &str, cx: f64, cy: f64, size: f64) {
+        self.ctx.set_font(std::sync::Arc::clone(&self.fonts.icons));
+        self.ctx.set_font_size(size);
+        let m = self.ctx.measure_text(glyph);
+        let (w, a, d) =
+            m.map(|m| (m.width, m.ascent, m.descent))
+                .unwrap_or((size, size * 0.8, 0.0));
+        self.ctx.save();
+        self.ctx.translate(cx - w * 0.5, cy + (a - d) * 0.5);
+        self.ctx.scale(1.0, -1.0);
+        self.ctx.fill_text(glyph, 0.0, 0.0);
+        self.ctx.restore();
+    }
+
     /// `textAlign = 'center'` variant.
     pub fn fill_text_centered(
         &mut self,

@@ -186,6 +186,43 @@ fn draw_hint(c: &mut Cx, game: &Game, layout: &Layout) {
     );
 }
 
+const FA_EXPAND: &str = "\u{f065}";
+const FA_COMPRESS: &str = "\u{f066}";
+
+/// Full-screen toggle, touch devices only (see `Layout::fullscreen_rect`).
+fn draw_fullscreen(c: &mut Cx, game: &Game, layout: &Layout) {
+    if !Layout::shows_fullscreen_button() {
+        return;
+    }
+    let r = layout.fullscreen_rect();
+    let hover = game
+        .input
+        .pointer
+        .map(|(x, y)| r.contains(x, y))
+        .unwrap_or(false);
+    c.fill_style(if hover {
+        rgba(20, 40, 28, 0.8)
+    } else {
+        rgba(20, 40, 28, 0.55)
+    });
+    c.begin_path();
+    c.arc(
+        r.x + r.w / 2.0,
+        r.y + r.h / 2.0,
+        r.w / 2.0,
+        0.0,
+        std::f64::consts::TAU,
+    );
+    c.fill();
+    let glyph = if agg_gui::fullscreen::is_active() {
+        FA_COMPRESS
+    } else {
+        FA_EXPAND
+    };
+    c.fill_style(WHITE);
+    c.icon_centered(glyph, r.x + r.w / 2.0, r.y + r.h / 2.0, 18.0);
+}
+
 fn draw_mute(c: &mut Cx, game: &Game, layout: &Layout) {
     let r = layout.mute_rect();
     let hover = game
@@ -386,6 +423,7 @@ pub fn draw_stage_chrome(c: &mut Cx, game: &mut Game, layout: &Layout) {
     draw_toast(c, game, layout);
     draw_hint(c, game, layout);
     draw_mute(c, game, layout);
+    draw_fullscreen(c, game, layout);
     draw_overlay(c, game, layout);
     c.restore();
 }

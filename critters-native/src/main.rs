@@ -45,6 +45,12 @@ fn main() -> Result<(), ShellError> {
         config = config.with_screenshot(path, frames);
     }
 
+    // `CRITTERS_MOBILE=1` previews the touch layout (full-screen button).
+    if std::env::var("CRITTERS_MOBILE").is_ok() {
+        agg_gui::input_profile::set_input_profile(
+            agg_gui::input_profile::InputProfile::MobileAndroid,
+        );
+    }
     let autoplay = std::env::var("CRITTERS_AUTOPLAY").is_ok();
     let gallery = std::env::var("CRITTERS_GALLERY").is_ok();
     agg_gui_shell::run(config, move |_init| {
