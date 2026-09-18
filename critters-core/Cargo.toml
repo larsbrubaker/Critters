@@ -14,5 +14,8 @@ agg-rust = "1.1"
 box2d-rust = { path = "../../box2d-rust" }
 web-time = { workspace = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+web-sys = { version = "0.3", features = ["console"] }
+
 [lib]
 crate-type = ["rlib"]

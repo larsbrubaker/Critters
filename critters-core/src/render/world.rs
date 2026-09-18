@@ -13,6 +13,7 @@ use crate::piece::Piece;
 use crate::render::canvas::Cx;
 use crate::render::critters::{draw_critter, Expression};
 use crate::render::homes::{draw_home, last_home_path};
+use crate::render::sprites::SpriteCache;
 
 pub fn draw_floor(c: &mut Cx, game: &Game) {
     // dirt, with a grass edge
@@ -226,21 +227,33 @@ pub fn expression_for(game: &Game, b: &Piece, held: bool) -> Expression {
     Expression::Happy
 }
 
-/// `drawBody(c, b, ghost, held)`; `on_stage` is the original's `c === ctx`.
-pub fn draw_body(c: &mut Cx, game: &Game, b: &Piece, ghost: bool, held: bool, on_stage: bool) {
+/// The hollow rim: the original strokes whatever path `drawHome` left
+/// current — the hollow's innermost ellipse — after `restore()`, and fills
+/// it with the stability tint first. Expects the piece frame (origin at the
+/// piece centre, rotated).
+fn paint_rim(c: &mut Cx, b: &Piece, tint: bool) {
     let shape = b.spec;
-    c.save();
-    if ghost {
-        c.global_alpha(0.55);
+    last_home_path(c, shape.name, shape.face_size);
+    if tint && b.stability_mult > 1.0 {
+        let a = ((b.stability_mult - 1.0) * 0.03).min(0.3);
+        c.fill_style(rgba(40, 25, 10, a as f32));
+        c.fill();
     }
-    if !held && on_stage {
-        let (dx, rot) = game.wind_lean(b);
-        if dx != 0.0 || rot != 0.0 {
-            c.translate(b.x + dx, b.y);
-            c.rotate(rot);
-            c.translate(-b.x, -b.y);
-        }
-    }
+    c.line_width(3.0);
+    c.stroke_style(rgba(0, 0, 0, 0.28));
+    c.line_join_round();
+    c.stroke();
+    c.line_width(1.5);
+    c.stroke_style(rgba(255, 255, 255, 0.25));
+    c.stroke();
+}
+
+/// The static part of `drawBody`: the shape fill, the wood interior clipped
+/// to the outline, and the hollow rim — everything that never changes for a
+/// given shape. Drawn at the piece's own position and angle. This is what
+/// `render/sprites.rs` rasterises once per shape.
+pub fn paint_body(c: &mut Cx, b: &Piece) {
+    let shape = b.spec;
     c.begin_path();
     if let ShapeKind::Round { r } = shape.kind {
         c.arc(b.x, b.y, r, 0.0, std::f64::consts::TAU);
@@ -264,42 +277,109 @@ pub fn draw_body(c: &mut Cx, game: &Game, b: &Piece, ghost: bool, held: bool, on
     let extents = b.local_extents();
     draw_home(c, shape.name, &extents, shape.face_size);
     c.restore();
-    // In the original, `restore()` does not restore the canvas path, so the
-    // tint fill and the two strokes below act on the last path `drawHome`
-    // built — the hollow's innermost ellipse — which gives the hole its
-    // rim. Rebuild that path in the same frame to reproduce it exactly.
     c.save();
     c.translate(b.x, b.y);
     c.rotate(b.angle);
-    last_home_path(c, shape.name, shape.face_size);
-    if b.stability_mult > 1.0 {
-        let a = ((b.stability_mult - 1.0) * 0.03).min(0.3);
-        c.fill_style(rgba(40, 25, 10, a as f32));
-        c.fill();
-    }
-    c.line_width(3.0);
-    c.stroke_style(rgba(0, 0, 0, 0.28));
-    c.line_join_round();
-    c.stroke();
-    c.line_width(1.5);
-    c.stroke_style(rgba(255, 255, 255, 0.25));
-    c.stroke();
+    paint_rim(c, b, false);
     c.restore();
+}
 
-    let (dx, dy, rot, sx, sy) = critter_anim(game, b, held);
-    c.translate(b.x, b.y);
-    c.rotate(b.angle);
-    c.translate(dx, dy);
-    c.rotate(rot);
-    c.scale(sx, sy);
+/// Expression and blink state for a piece right now.
+fn face_state(game: &Game, b: &Piece, held: bool, on_stage: bool) -> (Expression, bool) {
     let expr = if on_stage {
         expression_for(game, b, held)
     } else {
         Expression::Happy
     };
     let blink = expr != Expression::Scared && ((game.time + b.anim_phase * 7.0) % 3900.0) < 120.0;
-    draw_critter(c, shape.critter, shape.face_size * 1.05, expr, blink);
+    (expr, blink)
+}
+
+fn apply_ghost_and_wind(
+    c: &mut Cx,
+    game: &Game,
+    b: &Piece,
+    ghost: bool,
+    held: bool,
+    on_stage: bool,
+) {
+    if ghost {
+        c.global_alpha(0.55);
+    }
+    if !held && on_stage {
+        let (dx, rot) = game.wind_lean(b);
+        if dx != 0.0 || rot != 0.0 {
+            c.translate(b.x + dx, b.y);
+            c.rotate(rot);
+            c.translate(-b.x, -b.y);
+        }
+    }
+}
+
+/// `drawBody(c, b, ghost, held)`; `on_stage` is the original's `c === ctx`.
+///
+/// The body and the face come from the sprite cache (see
+/// `render/sprites.rs`): two textured quads per piece instead of ~60
+/// re-tessellated paths and a clip layer. Only the stability tint, which
+/// varies continuously, is still drawn live.
+pub fn draw_body(
+    c: &mut Cx,
+    game: &Game,
+    sprites: &mut SpriteCache,
+    b: &Piece,
+    ghost: bool,
+    held: bool,
+    on_stage: bool,
+) {
+    c.save();
+    apply_ghost_and_wind(c, game, b, ghost, held, on_stage);
+    c.translate(b.x, b.y);
+    c.rotate(b.angle);
+    let fonts = c.fonts;
+    sprites.body(fonts, b.spec).blit(c);
+    if b.stability_mult > 1.0 {
+        // tint the hollow, then put the rim back on top as the original does
+        paint_rim(c, b, true);
+    }
+    let (dx, dy, rot, sx, sy) = critter_anim(game, b, held);
+    c.translate(dx, dy);
+    c.rotate(rot);
+    c.scale(sx, sy);
+    let (expr, blink) = face_state(game, b, held, on_stage);
+    sprites.face(fonts, b.spec, expr, blink).blit(c);
     c.restore();
+}
+
+/// `draw_body` without the sprite cache: every path drawn live, exactly in
+/// the original's order. Used by the gallery so the vector rendering can be
+/// compared with the JavaScript, and as the reference the sprites must match.
+pub fn draw_body_live(c: &mut Cx, game: &Game, b: &Piece, ghost: bool, held: bool, on_stage: bool) {
+    c.save();
+    apply_ghost_and_wind(c, game, b, ghost, held, on_stage);
+    paint_body(c, b);
+    if b.stability_mult > 1.0 {
+        c.save();
+        c.translate(b.x, b.y);
+        c.rotate(b.angle);
+        paint_rim(c, b, true);
+        c.restore();
+    }
+    let (dx, dy, rot, sx, sy) = critter_anim(game, b, held);
+    c.translate(b.x, b.y);
+    c.rotate(b.angle);
+    c.translate(dx, dy);
+    c.rotate(rot);
+    c.scale(sx, sy);
+    let (expr, blink) = face_state(game, b, held, on_stage);
+    draw_critter(c, b.spec.critter, b.spec.face_size * 1.05, expr, blink);
+    c.restore();
+}
+
+/// Whether any part of a piece can be on screen: its bounds, padded for
+/// ears, antlers and the wind lean, against the visible world span.
+pub fn piece_visible(b: &Piece, cam_y: f64, stage_h: f64) -> bool {
+    const PAD: f64 = 90.0;
+    b.bounds.max.y + PAD >= cam_y && b.bounds.min.y - PAD <= cam_y + stage_h
 }
 
 /// Tint used by the tray for the slot background — kept here so the palette
@@ -344,6 +424,23 @@ mod tests {
         assert_eq!(expression_for(&g, &p, false), Expression::Worried);
         p.is_static = true;
         assert_eq!(expression_for(&g, &p, false), Expression::Happy);
+    }
+
+    #[test]
+    fn pieces_far_below_or_above_the_view_are_culled() {
+        let cam_y = -2000.0;
+        let h = 650.0;
+        let mut p = Piece::new(SHAPES[1], W / 2.0, -1700.0, 0.0);
+        assert!(piece_visible(&p, cam_y, h));
+        p.set_position(W / 2.0, -30.0);
+        assert!(
+            !piece_visible(&p, cam_y, h),
+            "the bottom of a 20 m tower is off screen"
+        );
+        p.set_position(W / 2.0, -2200.0);
+        assert!(!piece_visible(&p, cam_y, h));
+        p.set_position(W / 2.0, -2100.0);
+        assert!(piece_visible(&p, cam_y, h), "ears may poke into view");
     }
 
     #[test]

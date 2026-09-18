@@ -15,9 +15,11 @@ use agg_gui::widget::Widget;
 use web_time::Instant;
 
 use crate::audio::{render_sfx, AudioSink};
+use crate::debug::{DebugOptions, FrameStats};
 use crate::fonts::Fonts;
 use crate::game::Game;
 use crate::input::{GameKey, Layout};
+use crate::render::sprites::SpriteCache;
 use crate::settings::{Settings, SettingsStore};
 
 pub struct GameWidget {
@@ -30,8 +32,9 @@ pub struct GameWidget {
     layout: Layout,
     last_paint: Option<Instant>,
     unlocked: bool,
-    autoplay: bool,
-    gallery: bool,
+    debug: DebugOptions,
+    stats: FrameStats,
+    sprites: SpriteCache,
 }
 
 impl GameWidget {
@@ -49,20 +52,20 @@ impl GameWidget {
             layout,
             last_paint: None,
             unlocked: false,
-            autoplay: false,
-            gallery: false,
+            debug: DebugOptions::default(),
+            stats: FrameStats::default(),
+            sprites: SpriteCache::default(),
         }
     }
 
-    /// Show the shape gallery instead of the game (debug).
-    pub fn with_gallery(mut self) -> Self {
-        self.gallery = true;
-        self
-    }
-
-    /// Enable the autoplay debug driver.
-    pub fn with_autoplay(mut self) -> Self {
-        self.autoplay = true;
+    /// Apply the debug switches (see `debug.rs`).
+    pub fn with_debug(mut self, options: DebugOptions) -> Self {
+        self.debug = options;
+        crate::debug::enable_sections(options.stats);
+        if options.stress > 0 {
+            self.game
+                .stress_tower(options.stress, options.stress_physics);
+        }
         self
     }
 
@@ -160,17 +163,38 @@ impl Widget for GameWidget {
         .min(50.0);
         self.last_paint = Some(now);
         self.game.step(dt);
-        if self.autoplay {
+        if self.debug.autoplay {
             self.game.autoplay_step();
         }
         self.flush_side_effects();
+        let stepped = Instant::now();
         let (w, h) = (self.bounds.width, self.bounds.height);
         let layout = self.layout;
-        if self.gallery {
+        if self.debug.gallery {
             crate::render::gallery::draw_gallery(ctx, &self.fonts, &self.game, w, h);
             return;
         }
-        crate::render::draw(ctx, &self.fonts, &mut self.game, &layout, w, h);
+        // sprites are rasterised at the stage's physical pixel density
+        self.sprites
+            .set_pixels_per_unit(layout.scale * agg_gui::device_scale());
+        crate::render::draw(
+            ctx,
+            &self.fonts,
+            &mut self.game,
+            &mut self.sprites,
+            &layout,
+            w,
+            h,
+        );
+        if self.debug.stats {
+            let drawn = Instant::now();
+            let step_ms = (stepped - now).as_secs_f64() * 1000.0;
+            let draw_ms = (drawn - stepped).as_secs_f64() * 1000.0;
+            let pieces = self.game.placed.len();
+            if let Some(line) = self.stats.record(dt, step_ms, draw_ms, pieces) {
+                crate::debug::log(&line);
+            }
+        }
     }
 
     fn needs_draw(&self) -> bool {

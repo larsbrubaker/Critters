@@ -56,6 +56,19 @@ stage whose height follows the aspect ratio, world y = 0 at the stump top
 and y growing downward, 100 px = 1 m. The tray (112 logical px + padding)
 sits below the stage exactly as the original's flex layout did.
 
+## Performance
+
+Never guess: run `CRITTERS_STRESS=100 CRITTERS_STATS=1` and read the
+per-section timings. Physics is a fraction of a millisecond even with 100
+live bodies; drawing is what costs. Anything static or merely transformed
+is a cached sprite (`render/sprites.rs`: piece bodies, faces per
+expression, the ground, a cloud), rasterised once by agg-gui's software
+`GfxCtx` and drawn as a GPU textured quad. Off-screen pieces and scenery
+are culled, and same-colour discs go out as one `draw_triangles_aa` batch
+(`render/batch.rs`). New per-frame vector drawing must justify itself in
+the stats. `Cx::save/restore` also restore global alpha and line dash,
+which agg-gui's wgpu context does not.
+
 ## Audio
 
 Sound effects are synthesized (no asset files), mirroring the original's

@@ -11,11 +11,13 @@
 //! `View` bundles the camera helpers (`rise`, `altM`, `layerY`, `skyY`).
 
 pub mod background;
+pub mod batch;
 pub mod canvas;
 pub mod critters;
 pub mod gallery;
 pub mod homes;
 pub mod hud;
+pub mod sprites;
 pub mod world;
 
 use agg_gui::draw_ctx::DrawCtx;
@@ -25,6 +27,7 @@ use crate::fonts::Fonts;
 use crate::game::Game;
 use crate::input::Layout;
 use canvas::Cx;
+use sprites::SpriteCache;
 
 /// Camera state needed by the parallax helpers.
 #[derive(Clone, Copy, Debug)]
@@ -72,11 +75,13 @@ pub fn draw(
     ctx: &mut dyn DrawCtx,
     fonts: &Fonts,
     game: &mut Game,
+    sprites: &mut SpriteCache,
     layout: &Layout,
     widget_w: f64,
     widget_h: f64,
 ) {
     let app_x = ((widget_w - layout.app_w) / 2.0).max(0.0);
+    let mut timer = crate::debug::SectionTimer::start();
     let mut c = Cx::new(ctx, fonts);
 
     // page background behind the app column
@@ -92,22 +97,37 @@ pub fn draw(
     c.save();
     c.ctx.clip_rect(0.0, 0.0, layout.app_w, layout.stage_h);
     c.scale(layout.scale, layout.scale);
+    c.ppu = layout.scale * agg_gui::device_scale();
     let view = View::of(game);
     background::draw_sky(&mut c, &view, game);
+    timer.mark("sky");
     background::draw_space(&mut c, &view, game);
+    timer.mark("space");
     background::draw_mountains(&mut c, &view, game);
+    timer.mark("mountains");
     background::draw_far_trees(&mut c, &view, game);
-    background::draw_birds_and_clouds(&mut c, &view, game);
+    timer.mark("far");
+    background::draw_birds_and_clouds(&mut c, &view, game, sprites);
+    timer.mark("clouds");
     background::draw_mid_trees(&mut c, &view, game);
+    timer.mark("mid");
     background::draw_near_trees(&mut c, &view, game);
+    timer.mark("near");
     background::draw_wind(&mut c, &view, game);
+    timer.mark("wind");
     c.save();
     c.translate(0.0, -game.cam_y);
-    world::draw_floor(&mut c, game);
-    world::draw_stump(&mut c);
+    // the floor and stump scroll out of view once the camera has climbed
+    if game.cam_y + game.h > sprites::GROUND_RECT.1 {
+        sprites.ground(fonts, game).blit(&mut c);
+    }
     world::draw_ruler(&mut c, game);
-    for i in 0..game.placed.len() {
-        world::draw_body(&mut c, game, &game.placed[i], false, false, true);
+    timer.mark("floor+stump+ruler");
+    // Tall towers: only the pieces the camera can see are drawn.
+    for b in &game.placed {
+        if world::piece_visible(b, game.cam_y, game.h) {
+            world::draw_body(&mut c, game, sprites, b, false, false, true);
+        }
     }
     if let Some(held) = &game.held {
         c.save();
@@ -119,14 +139,17 @@ pub fn draw(
         c.line_to(held.x, 0.0);
         c.stroke();
         c.restore();
-        world::draw_body(&mut c, game, held, !game.can_drop(), true, true);
+        world::draw_body(&mut c, game, sprites, held, !game.can_drop(), true, true);
     }
     c.restore();
     c.restore();
 
+    timer.mark("pieces");
     // ── chrome (CSS px) ──
     hud::draw_stage_chrome(&mut c, game, layout);
-    hud::draw_tray(&mut c, game, layout);
+    timer.mark("hud");
+    hud::draw_tray(&mut c, game, sprites, layout);
+    timer.mark("tray");
 
     c.restore();
 }

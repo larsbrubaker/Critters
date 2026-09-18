@@ -11,6 +11,7 @@ use crate::config::{hex, rgba, SLOT_H, SLOT_W, TRAY_HEIGHT};
 use crate::game::{Game, State, INTRO_SMALL, TOAST_ANIMATION};
 use crate::input::{Layout, Rect};
 use crate::render::canvas::{wrap_lines, Cx};
+use crate::render::sprites::SpriteCache;
 use crate::render::world::{draw_body, slot_background};
 
 const WHITE: Color = Color::white();
@@ -429,7 +430,7 @@ pub fn draw_stage_chrome(c: &mut Cx, game: &mut Game, layout: &Layout) {
 }
 
 /// `#tray` with its three `.slot`s.
-pub fn draw_tray(c: &mut Cx, game: &Game, layout: &Layout) {
+pub fn draw_tray(c: &mut Cx, game: &Game, sprites: &mut SpriteCache, layout: &Layout) {
     let top = layout.stage_h;
     c.fill_style(hex(0x3b2a1e));
     c.fill_rect(0.0, top, layout.app_w, TRAY_HEIGHT);
@@ -499,7 +500,7 @@ pub fn draw_tray(c: &mut Cx, game: &Game, layout: &Layout) {
             let pcy = (piece.bounds.min.y + piece.bounds.max.y) / 2.0;
             c.translate(cx - pcx * k, cy - pcy * k);
             c.scale(k, k);
-            draw_body(c, game, piece, false, false, false);
+            draw_body(c, game, sprites, piece, false, false, false);
             c.restore();
         }
 

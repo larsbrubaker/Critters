@@ -11,7 +11,7 @@ mod settings;
 use std::rc::Rc;
 
 use agg_gui_shell::{NoHost, RedrawPolicy, ShellConfig, ShellError};
-use critters_core::{build_app, build_app_autoplay, build_app_gallery, Fonts};
+use critters_core::{build_app_with, DebugOptions, Fonts};
 
 fn main() -> Result<(), ShellError> {
     let fonts = Fonts::load().expect("bundled fonts parse");
@@ -51,16 +51,18 @@ fn main() -> Result<(), ShellError> {
             agg_gui::input_profile::InputProfile::MobileAndroid,
         );
     }
-    let autoplay = std::env::var("CRITTERS_AUTOPLAY").is_ok();
-    let gallery = std::env::var("CRITTERS_GALLERY").is_ok();
+    let env = |k: &str| std::env::var(k).is_ok();
+    let options = DebugOptions {
+        autoplay: env("CRITTERS_AUTOPLAY"),
+        gallery: env("CRITTERS_GALLERY"),
+        stress: std::env::var("CRITTERS_STRESS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0),
+        stress_physics: env("CRITTERS_STRESS_PHYSICS"),
+        stats: env("CRITTERS_STATS"),
+    };
     agg_gui_shell::run(config, move |_init| {
-        let app = if gallery {
-            build_app_gallery(fonts, audio, settings)
-        } else if autoplay {
-            build_app_autoplay(fonts, audio, settings)
-        } else {
-            build_app(fonts, audio, settings)
-        };
-        Ok((app, NoHost))
+        Ok((build_app_with(fonts, audio, settings, options), NoHost))
     })
 }

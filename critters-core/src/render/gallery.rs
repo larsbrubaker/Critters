@@ -11,7 +11,7 @@ use crate::fonts::Fonts;
 use crate::game::Game;
 use crate::piece::Piece;
 use crate::render::canvas::Cx;
-use crate::render::world::draw_body;
+use crate::render::world::draw_body_live;
 
 /// Positions matching the reference gallery script (logical px at 2.6×).
 const POSITIONS: [(f64, f64); 10] = [
@@ -42,7 +42,7 @@ pub fn draw_gallery(
     c.scale(2.6, -2.6);
     for (spec, (x, y)) in SHAPES.iter().zip(POSITIONS) {
         let piece = Piece::new(*spec, x, y, 0.0);
-        draw_body(&mut c, game, &piece, false, false, false);
+        draw_body_live(&mut c, game, &piece, false, false, false);
     }
     c.restore();
 }

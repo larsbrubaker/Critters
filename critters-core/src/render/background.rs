@@ -7,7 +7,9 @@ use agg_gui::color::Color;
 
 use crate::config::{hex, rgba, FLOOR_Y, SKY, W};
 use crate::game::Game;
+use crate::render::batch::DiscBatch;
 use crate::render::canvas::{mix, Cx};
+use crate::render::sprites::SpriteCache;
 use crate::render::View;
 use crate::scenery::LeafyTree;
 
@@ -51,14 +53,14 @@ pub fn draw_space(c: &mut Cx, view: &View, game: &Game) {
     let a = view.alt_m();
     let star_alpha = ((a - 12.0) / 10.0).clamp(0.0, 1.0);
     if star_alpha > 0.0 {
+        // all 120 stars in one draw call (see `render/batch.rs`)
+        let mut batch = DiscBatch::new(c.ppu);
         for s in &game.scenery.stars {
             let y = ((s.y + view.rise() * 0.08) % view.h + view.h) % view.h;
             let tw = 0.6 + 0.4 * (view.time / 600.0 + s.tw).sin();
-            c.fill_style(Color::rgba(1.0, 1.0, 1.0, (star_alpha * tw) as f32));
-            c.begin_path();
-            c.arc(s.x, y, s.r, 0.0, std::f64::consts::TAU);
-            c.fill();
+            batch.add(s.x, y, s.r, star_alpha * tw);
         }
+        batch.flush(c, Color::white());
     }
     for p in &game.scenery.planets {
         let y = view.sky_y(p.a, p.p);
@@ -127,87 +129,99 @@ pub fn draw_mountains(c: &mut Cx, view: &View, game: &Game) {
 
 pub fn draw_far_trees(c: &mut Cx, view: &View, game: &Game) {
     let base = view.layer_y(FLOOR_Y, 0.15);
+    if base - 300.0 > view.h {
+        return; // the tallest far tree is 290: the layer has scrolled off the bottom
+    }
+    // one opaque colour, so all 34 triangles go out as a single path
     c.fill_style(hex(0x4d8f6f));
+    c.begin_path();
     for t in &game.scenery.far_trees {
         let tw = t.h * t.w;
-        c.begin_path();
         c.move_to(t.x - tw / 2.0, base);
         c.line_to(t.x, base - t.h);
         c.line_to(t.x + tw / 2.0, base);
         c.close_path();
-        c.fill();
     }
-    c.fill_rect(0.0, base, W, view.h);
+    if base <= view.h {
+        c.rect(0.0, base, W, view.h - base);
+    }
+    c.fill();
 }
 
-fn draw_leafy_tree(c: &mut Cx, t: &LeafyTree, base: f64, trunk: Color, leaf: Color) {
+/// One leafy layer: trunks as rects, all canopies as one disc batch, then the
+/// ground band. Trees (and the whole layer) are skipped once they have
+/// scrolled below the view — at altitude that is every tree.
+fn draw_leafy_layer(
+    c: &mut Cx,
+    view: &View,
+    trees: &[LeafyTree],
+    base: f64,
+    trunk: Color,
+    leaf: Color,
+    ground: Color,
+) {
+    let mut canopies = DiscBatch::new(c.ppu);
     c.fill_style(trunk);
-    c.fill_rect(t.x - t.t / 2.0, base - t.h, t.t, t.h);
-    c.fill_style(leaf);
-    let top = base - t.h;
-    c.begin_path();
-    c.arc(t.x, top, t.r, 0.0, std::f64::consts::TAU);
-    c.arc(
-        t.x - t.r * 0.8,
-        top + t.r * 0.5,
-        t.r * 0.75,
-        0.0,
-        std::f64::consts::TAU,
-    );
-    c.arc(
-        t.x + t.r * 0.8,
-        top + t.r * 0.5,
-        t.r * 0.75,
-        0.0,
-        std::f64::consts::TAU,
-    );
-    c.arc(t.x, top + t.r * 0.9, t.r * 0.8, 0.0, std::f64::consts::TAU);
-    c.fill();
+    for t in trees {
+        let top = base - t.h;
+        if top - t.r > view.h {
+            continue;
+        }
+        c.fill_rect(t.x - t.t / 2.0, top, t.t, t.h);
+        canopies.add(t.x, top, t.r, 1.0);
+        canopies.add(t.x - t.r * 0.8, top + t.r * 0.5, t.r * 0.75, 1.0);
+        canopies.add(t.x + t.r * 0.8, top + t.r * 0.5, t.r * 0.75, 1.0);
+        canopies.add(t.x, top + t.r * 0.9, t.r * 0.8, 1.0);
+    }
+    canopies.flush(c, leaf);
+    if base <= view.h {
+        c.fill_style(ground);
+        c.fill_rect(0.0, base, W, view.h);
+    }
 }
 
 pub fn draw_mid_trees(c: &mut Cx, view: &View, game: &Game) {
     let base = view.layer_y(FLOOR_Y, 0.35);
-    for t in &game.scenery.mid_trees {
-        draw_leafy_tree(c, t, base, hex(0x7a5a3c), hex(0x4f9a5b));
-    }
-    c.fill_style(hex(0x3f7a45));
-    c.fill_rect(0.0, base, W, view.h);
+    draw_leafy_layer(
+        c,
+        view,
+        &game.scenery.mid_trees,
+        base,
+        hex(0x7a5a3c),
+        hex(0x4f9a5b),
+        hex(0x3f7a45),
+    );
 }
 
 pub fn draw_near_trees(c: &mut Cx, view: &View, game: &Game) {
     let base = view.layer_y(FLOOR_Y, 0.65);
-    for t in &game.scenery.near_trees {
-        draw_leafy_tree(c, t, base, hex(0x4e3a2a), hex(0x3a8a4a));
-    }
-    c.fill_style(hex(0x356a3c));
-    c.fill_rect(0.0, base, W, view.h);
+    draw_leafy_layer(
+        c,
+        view,
+        &game.scenery.near_trees,
+        base,
+        hex(0x4e3a2a),
+        hex(0x3a8a4a),
+        hex(0x356a3c),
+    );
 }
 
-pub fn draw_birds_and_clouds(c: &mut Cx, view: &View, game: &Game) {
+pub fn draw_birds_and_clouds(c: &mut Cx, view: &View, game: &Game, sprites: &mut SpriteCache) {
     let cloud_alpha = ((view.alt_m() - 4.0) / 3.0).clamp(0.0, 1.0) * 0.88;
-    c.fill_style(Color::rgba(1.0, 1.0, 1.0, cloud_alpha as f32));
-    for cl in &game.scenery.clouds {
-        let y = view.sky_y(cl.a, 0.5);
-        if y < -80.0 || y > view.h + 80.0 {
-            continue;
+    if cloud_alpha > 0.0 {
+        // one cached cloud, scaled and faded per instance
+        for cl in &game.scenery.clouds {
+            let y = view.sky_y(cl.a, 0.5);
+            if y < -80.0 || y > view.h + 80.0 {
+                continue;
+            }
+            c.save();
+            c.translate(cl.x, y);
+            c.scale(cl.s, cl.s);
+            c.global_alpha(cloud_alpha);
+            sprites.cloud(c.fonts).blit(c);
+            c.restore();
         }
-        c.begin_path();
-        c.arc(cl.x, y, 22.0 * cl.s, 0.0, std::f64::consts::TAU);
-        c.arc(
-            cl.x + 26.0 * cl.s,
-            y - 10.0 * cl.s,
-            26.0 * cl.s,
-            0.0,
-            std::f64::consts::TAU,
-        );
-        c.arc(
-            cl.x + 54.0 * cl.s,
-            y,
-            20.0 * cl.s,
-            0.0,
-            std::f64::consts::TAU,
-        );
-        c.fill();
     }
     let bird_alpha = ((view.alt_m() - 2.5) / 2.0).clamp(0.0, 1.0);
     if bird_alpha <= 0.0 {

@@ -15,11 +15,28 @@ use crate::fonts::Fonts;
 pub struct Cx<'a> {
     pub ctx: &'a mut dyn DrawCtx,
     pub fonts: &'a Fonts,
+    /// Device pixels per unit of the space being drawn in (set by the caller
+    /// when it changes scale); `render/batch.rs` sizes its AA fringe from it.
+    pub ppu: f64,
+    /// Canvas state the backend's own save/restore does not cover: agg-gui's
+    /// wgpu context only stacks the transform and clip, whereas canvas-2D
+    /// also restores `globalAlpha` and the line dash. Tracked here so a
+    /// dimmed held piece or a faded cloud cannot leak into later drawing.
+    alpha: f64,
+    dash: Vec<f64>,
+    saved: Vec<(f64, Vec<f64>)>,
 }
 
 impl<'a> Cx<'a> {
     pub fn new(ctx: &'a mut dyn DrawCtx, fonts: &'a Fonts) -> Self {
-        Self { ctx, fonts }
+        Self {
+            ctx,
+            fonts,
+            ppu: 1.0,
+            alpha: 1.0,
+            dash: Vec::new(),
+            saved: Vec::new(),
+        }
     }
 
     // ── style ─────────────────────────────────────────────────────────────
@@ -49,10 +66,12 @@ impl<'a> Cx<'a> {
     }
 
     pub fn global_alpha(&mut self, a: f64) {
+        self.alpha = a;
         self.ctx.set_global_alpha(a);
     }
 
     pub fn set_line_dash(&mut self, dashes: &[f64]) {
+        self.dash = dashes.to_vec();
         self.ctx.set_line_dash(dashes, 0.0);
     }
 
@@ -149,11 +168,22 @@ impl<'a> Cx<'a> {
     // ── transform ─────────────────────────────────────────────────────────
 
     pub fn save(&mut self) {
+        self.saved.push((self.alpha, self.dash.clone()));
         self.ctx.save();
     }
 
     pub fn restore(&mut self) {
         self.ctx.restore();
+        if let Some((alpha, dash)) = self.saved.pop() {
+            if alpha != self.alpha {
+                self.alpha = alpha;
+                self.ctx.set_global_alpha(alpha);
+            }
+            if dash != self.dash {
+                self.ctx.set_line_dash(&dash, 0.0);
+                self.dash = dash;
+            }
+        }
     }
 
     pub fn translate(&mut self, x: f64, y: f64) {
@@ -267,4 +297,34 @@ pub fn wrap_lines(cx: &mut Cx, text: &str, max_w: f64, size: f64, bold: bool) ->
         lines.push(line);
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use agg_gui::{Framebuffer, GfxCtx};
+
+    /// Canvas semantics: `restore()` brings back the `globalAlpha` that was
+    /// current at `save()`. A faded sprite must not dim what is drawn next.
+    #[test]
+    fn restore_brings_back_global_alpha() {
+        let fonts = Fonts::load().unwrap();
+        let mut fb = Framebuffer::new(8, 8);
+        {
+            let mut gfx = GfxCtx::new(&mut fb);
+            let mut c = Cx::new(&mut gfx, &fonts);
+            c.save();
+            c.global_alpha(0.25);
+            c.set_line_dash(&[2.0, 2.0]);
+            c.restore();
+            assert_eq!(c.alpha, 1.0);
+            assert!(c.dash.is_empty());
+            c.fill_style(Color::from_rgb8(255, 0, 0));
+            c.fill_rect(0.0, 0.0, 8.0, 8.0);
+        }
+        let px = fb.pixels();
+        let i = (4 * 8 + 4) * 4;
+        assert_eq!(px[i + 3], 255, "the fill after restore is fully opaque");
+        assert_eq!(px[i], 255);
+    }
 }

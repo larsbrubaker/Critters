@@ -13,7 +13,7 @@ mod settings;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use critters_core::{build_app, build_app_autoplay, Fonts};
+use critters_core::{build_app_with, DebugOptions, Fonts};
 use demo_wgpu::web_shell;
 use wasm_bindgen::prelude::*;
 
@@ -29,15 +29,24 @@ pub fn start() {
             let fonts = Fonts::load().expect("bundled fonts parse");
             let audio = Rc::new(audio::WebAudio::new());
             let settings = Arc::new(settings::LocalStorageSettingsStore);
-            let autoplay = web_sys::window()
+            // `?autoplay`, `?stats`, `?stress=N`, `?physics` mirror the native env vars.
+            let query = web_sys::window()
                 .and_then(|w| w.location().search().ok())
-                .map(|s| s.contains("autoplay"))
-                .unwrap_or(false);
-            if autoplay {
-                build_app_autoplay(fonts, audio, settings)
-            } else {
-                build_app(fonts, audio, settings)
-            }
+                .unwrap_or_default();
+            let has = |k: &str| query.contains(k);
+            let stress = query
+                .split(['?', '&'])
+                .find_map(|kv| kv.strip_prefix("stress="))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            let options = DebugOptions {
+                autoplay: has("autoplay"),
+                gallery: has("gallery"),
+                stress,
+                stress_physics: has("physics"),
+                stats: has("stats"),
+            };
+            build_app_with(fonts, audio, settings, options)
         },
         || {},
     );

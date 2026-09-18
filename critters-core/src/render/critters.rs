@@ -12,7 +12,7 @@ use crate::render::canvas::Cx;
 const OUTLINE: Color = hex(0x3a2718);
 
 /// Which face a critter makes right now.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Expression {
     Happy,
     Curious,

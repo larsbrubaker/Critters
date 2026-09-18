@@ -48,8 +48,17 @@ wasm-pack build critters-wasm --target web --out-dir ../demo/public/pkg --no-typ
 cd demo; bun install; bun run dev
 ```
 
-`CRITTERS_SCREENSHOT=shot.png cargo run --release -p critters-native`
-captures a frame and exits.
+Debug switches (native env vars; the web build takes the same names as
+query parameters, e.g. `?stress=100&stats`):
+
+| Env var | Effect |
+|---|---|
+| `CRITTERS_SCREENSHOT=shot.png` | capture a frame (after `CRITTERS_SCREENSHOT_FRAMES`) and exit |
+| `CRITTERS_AUTOPLAY=1` | the game plays itself |
+| `CRITTERS_STRESS=N` | start with an N-piece tower (`CRITTERS_STRESS_PHYSICS=1` for live bodies) |
+| `CRITTERS_STATS=1` | print per-frame physics and per-section draw times |
+| `CRITTERS_GALLERY=1` | draw every shape at 2.6x for comparison with the original |
+| `CRITTERS_MOBILE=1`, `CRITTERS_WINDOW=WxH` | preview the touch layout / set the window size |
 
 ## Layout
 

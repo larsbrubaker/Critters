@@ -22,6 +22,7 @@
 pub mod audio;
 pub mod autoplay;
 pub mod config;
+pub mod debug;
 pub mod fonts;
 pub mod game;
 pub mod geometry;
@@ -44,6 +45,7 @@ use agg_gui::draw_ctx::DrawCtx;
 use agg_gui::App;
 
 pub use audio::{AudioClip, AudioSink, NullAudio};
+pub use debug::DebugOptions;
 pub use fonts::Fonts;
 pub use settings::{InMemorySettingsStore, Settings, SettingsStore};
 pub use widget::GameWidget;
@@ -51,28 +53,18 @@ pub use widget::GameWidget;
 /// Build the shared app: one full-window [`GameWidget`]. Both shells call
 /// this and forward platform input into the returned [`App`].
 pub fn build_app(fonts: Fonts, audio: Rc<dyn AudioSink>, settings: Arc<dyn SettingsStore>) -> App {
-    App::new(Box::new(GameWidget::new(fonts, audio, settings)))
+    build_app_with(fonts, audio, settings, DebugOptions::default())
 }
 
-/// `build_app` showing the shape gallery (see `render/gallery.rs`).
-pub fn build_app_gallery(
+/// `build_app` with debug switches (see `debug.rs`).
+pub fn build_app_with(
     fonts: Fonts,
     audio: Rc<dyn AudioSink>,
     settings: Arc<dyn SettingsStore>,
+    options: DebugOptions,
 ) -> App {
     App::new(Box::new(
-        GameWidget::new(fonts, audio, settings).with_gallery(),
-    ))
-}
-
-/// `build_app` with the autoplay debug driver enabled (see `autoplay.rs`).
-pub fn build_app_autoplay(
-    fonts: Fonts,
-    audio: Rc<dyn AudioSink>,
-    settings: Arc<dyn SettingsStore>,
-) -> App {
-    App::new(Box::new(
-        GameWidget::new(fonts, audio, settings).with_autoplay(),
+        GameWidget::new(fonts, audio, settings).with_debug(options),
     ))
 }
 
