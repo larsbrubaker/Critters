@@ -12,7 +12,7 @@ license = "MIT"
 repository = "https://github.com/larsbrubaker/Critters"
 
 [workspace.dependencies]
-agg-gui = "0.5"
+agg-gui = "0.5.1"
 demo-wgpu = { path = "../agg-gui/demo-wgpu", default-features = false }
 web-time = "1"
 
