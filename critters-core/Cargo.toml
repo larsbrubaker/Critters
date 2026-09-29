@@ -11,7 +11,7 @@ description = "Target-agnostic game core for Critter Stack (Rust port of the Jav
 [dependencies]
 agg-gui = { workspace = true }
 agg-rust = "1.1"
-box2d-rust = { path = "../../box2d-rust" }
+box2d-rust = { workspace = true }
 web-time = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

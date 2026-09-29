@@ -13,6 +13,10 @@ repository = "https://github.com/larsbrubaker/Critters"
 
 [workspace.dependencies]
 agg-gui = "0.5.1"
+# Published native shell (winit event loop + wgpu present + input plumbing).
+agg-gui-shell = "0.5.2"
+# Pure Rust port of the Box2D v3 physics engine.
+box2d-rust = "1.4.0"
 demo-wgpu = { path = "../agg-gui/demo-wgpu", default-features = false }
 web-time = "1"
 
@@ -24,6 +28,8 @@ web-time = "1"
 # ---------------------------------------------------------------------------
 [patch.crates-io]
 agg-gui = { path = "../agg-gui/agg-gui" }
+agg-gui-shell = { path = "../agg-gui/agg-gui-shell" }
+box2d-rust = { path = "../box2d-rust" }
 
 # ---------------------------------------------------------------------------
 # Optimize dependencies in debug builds. The agg-rust software rasterizer is

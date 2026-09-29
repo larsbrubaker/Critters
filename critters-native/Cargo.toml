@@ -16,9 +16,9 @@ test = false
 [dependencies]
 critters-core = { path = "../critters-core" }
 agg-gui = { workspace = true }
-# The winit event loop, wgpu surface, and input plumbing all live in
-# agg-gui-shell — this crate is only the app-specific glue plus audio and
-# settings storage.
-agg-gui-shell = { path = "../../agg-gui/agg-gui-shell" }
+# The winit event loop, wgpu surface, and input plumbing all live in the
+# published agg-gui-shell — this crate is only the app-specific glue plus
+# audio and settings storage.
+agg-gui-shell = { workspace = true }
 cpal = "0.17"
 dirs = "7"

@@ -90,8 +90,8 @@ score persist through agg-gui's storage abstraction (browser
 
 ## Local development uses agg-gui and box2d-rust as path deps — improve them as you go
 
-`Cargo.toml` patches `agg-gui` to the sibling checkout `../agg-gui/` and
-depends on `box2d-rust` at `../box2d-rust/`. When Critters needs a
+`Cargo.toml` patches `agg-gui` and `agg-gui-shell` to the sibling checkout
+`../agg-gui/` and `box2d-rust` to `../box2d-rust/`. When Critters needs a
 capability that doesn't exist in either, add it to that library itself
 (then Lars publishes a new version) — never a local workaround. CI clones
 both siblings so the paths resolve there too.
